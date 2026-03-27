@@ -22,6 +22,13 @@ export default function Sidebar({ sidebarOpen, onCollapse }: SidebarProps) {
           <span>🏠</span>
           <span>Home</span>
         </Link>
+        <Link
+          href="/attendance"
+          className="w-full text-left flex items-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors text-gray-700 hover:bg-gray-100 whitespace-nowrap"
+        >
+          <span>📅</span>
+          <span>Attendance</span>
+        </Link>
       </nav>
 
       <div className="p-6 border-t border-gray-200">
