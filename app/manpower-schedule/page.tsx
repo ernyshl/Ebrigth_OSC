@@ -10,11 +10,18 @@ export default function ManpowerHub() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
-    // Check if any schedules have been submitted yet
-    const history = JSON.parse(localStorage.getItem("manpower_history") || "[]");
-    if (history.length > 0) {
-      setHasHistory(true);
-    }
+    const checkHistory = async () => {
+      try {
+        const res = await fetch('/api/get-schedules');
+        const data = await res.json();
+        if (data.success && data.schedules.length > 0) {
+          setHasHistory(true);
+        }
+      } catch {
+        setHasHistory(false);
+      }
+    };
+    checkHistory();
   }, []);
 
   return (

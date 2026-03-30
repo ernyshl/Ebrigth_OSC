@@ -10,9 +10,10 @@ import "react-date-range/dist/theme/default.css";
 import Sidebar from "@/app/components/Sidebar";
 
 // --- IMPORT SHARED CONSTANTS ---
-import { 
-  SHARED_EMPLOYEES, DAYS, EMPLOYEE_COLORS, COLUMNS, ALL_BRANCHES,
-  getTimeSlotsForDay, isAdminSlot 
+import {
+  COLUMNS, ALL_BRANCHES,
+  getTimeSlotsForDay, isAdminSlot, getEmployeeColor,
+  getWorkingDaysForBranch, isOpeningClosingSlot,
 } from "@/lib/manpowerUtils";
 
 
@@ -83,6 +84,8 @@ export default function ArchiveSchedulePage() {
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]); // <-- 3. USE STATE INSTEAD OF LOCALSTORAGE
   const [isLoading, setIsLoading] = useState(true);
+  const [branchStaffData, setBranchStaffData] = useState<Record<string, string[]>>({});
+  const [branchManagerData, setBranchManagerData] = useState<Record<string, string[]>>({});
   
   // --- FILTER STATES ---
   const [filterBranch, setFilterBranch] = useState<string>("");
@@ -104,16 +107,31 @@ export default function ArchiveSchedulePage() {
       try {
         const res = await fetch('/api/get-schedules');
         const data = await res.json();
-        if (data.success) {
-          setHistory(data.schedules);
-        }
+        if (data.success) setHistory(data.schedules);
       } catch (err) {
         console.error("Failed to load schedules", err);
       } finally {
         setIsLoading(false);
       }
     };
+    const fetchStaff = async () => {
+      const res = await fetch('/api/branch-staff');
+      const staffList = await res.json();
+      const grouped: Record<string, string[]> = {};
+      const managers: Record<string, string[]> = {};
+      staffList.forEach((s: any) => {
+        if (!grouped[s.branch]) grouped[s.branch] = [];
+        grouped[s.branch].push(s.name);
+        if (s.role && s.role.startsWith('branch_manager')) {
+          if (!managers[s.branch]) managers[s.branch] = [];
+          managers[s.branch].push(s.name);
+        }
+      });
+      setBranchStaffData(grouped);
+      setBranchManagerData(managers);
+    };
     fetchSchedules();
+    fetchStaff();
   }, []);
 
   // Safely extract user info
@@ -175,13 +193,15 @@ export default function ArchiveSchedulePage() {
   const calculateHoursForData = () => {
     if (!selectedRecord) return [];
     
-    const selectedInTable = Object.values(validData).filter(val => val !== "" && val !== "None") as string[];
-    const uniqueEmployeesToTrack: string[] = Array.from(new Set([...SHARED_EMPLOYEES, ...selectedInTable]));
+    const managerNames = new Set(branchManagerData[selectedRecord.branch] || []);
+    const allBranchStaff = (branchStaffData[selectedRecord.branch] || []).filter(n => !managerNames.has(n));
+    const selectedInTable = (Object.values(validData).filter(val => val !== "" && val !== "None") as string[]).filter(n => !managerNames.has(n));
+    const uniqueEmployeesToTrack: string[] = Array.from(new Set([...allBranchStaff, ...selectedInTable]));
 
     const staffStats: Record<string, { coachHrs: number; execHrs: number; total: number }> = {};
     uniqueEmployeesToTrack.forEach((emp: string) => { staffStats[emp] = { coachHrs: 0, execHrs: 0, total: 0 }; });
 
-    DAYS.forEach((day) => {
+    getWorkingDaysForBranch(selectedRecord.branch).forEach((day) => {
       const isWeekend = day === "Saturday" || day === "Sunday";
       const dailyTarget = isWeekend ? 10.5 : 5.0;
 
@@ -191,6 +211,7 @@ export default function ArchiveSchedulePage() {
         let workedThatDay = false;
 
         getTimeSlotsForDay(day, selectedRecord.branch).forEach((slot: string) => {
+          if (isOpeningClosingSlot(slot, selectedRecord.branch)) return;
           COLUMNS.forEach((col) => {
             if (validData[`${day}-${slot}-${col.id}`] === emp) {
               workedThatDay = true;
@@ -273,7 +294,7 @@ export default function ArchiveSchedulePage() {
 
           <div className="flex-1 overflow-y-auto w-full mx-auto px-4 md:px-6 pb-20">
             <div className="space-y-8">
-              {DAYS.map((day) => {
+              {getWorkingDaysForBranch(selectedRecord.branch).map((day) => {
                 const slots = getTimeSlotsForDay(day, selectedRecord.branch);
 
                 return (
@@ -286,10 +307,11 @@ export default function ArchiveSchedulePage() {
                     </div>
 
                     <div className="overflow-x-auto relative">
-                        <table className="w-full border-collapse text-xs" style={{ minWidth: '1900px' }}>
+                        <table className="w-full border-collapse text-xs" style={{ minWidth: '2100px' }}>
                         <thead>
                             <tr className="bg-slate-700 text-white uppercase tracking-widest">
                                 <th className="p-3 border-r border-slate-600 text-left w-[180px] sticky left-0 z-20 bg-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.3)]">Slot</th>
+                                <th className="p-3 border-r border-slate-600 text-center w-[180px] bg-slate-700 border-b-4 border-b-emerald-400">Manager on Duty</th>
                                 {COLUMNS.map(c => (
                                     <th key={c.id} className={`p-3 border-r border-slate-600 text-center w-[150px] ${c.type === 'exec' ? 'bg-slate-800' : ''}`}>
                                         {c.label}
@@ -299,27 +321,43 @@ export default function ArchiveSchedulePage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {slots.map(slot => (
-                            <tr key={slot} className="hover:bg-slate-50 group">
-                                <td className="p-3 border-r border-b border-slate-200 font-bold text-slate-600 sticky left-0 z-10 bg-slate-50 group-hover:bg-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] transition-colors">
+                            {slots.map((slot, slotIndex) => {
+                              const isOpenClose = isOpeningClosingSlot(slot, selectedRecord.branch);
+                              return (
+                            <tr key={slot} className={`group ${isOpenClose ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
+                                <td className={`p-3 border-r border-b border-slate-200 font-bold text-slate-900 sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] transition-colors ${isOpenClose ? 'bg-blue-100' : 'bg-slate-50 group-hover:bg-slate-100'}`}>
                                     {slot}
                                 </td>
-                                {COLUMNS.map(col => {
-                                  const name = validData[`${day}-${slot}-${col.id}`];
-                                  const displayValue = name && name !== "None" ? name : "-";
-                                  const bgColor = name && name !== "None" ? (EMPLOYEE_COLORS[name] || 'bg-slate-500 text-white') : (col.type === 'exec' ? 'bg-slate-50 text-slate-300' : 'bg-white text-slate-300');
-                                  
-                                  return (
-                                      <td key={col.id} className={`p-3 border-r border-b border-slate-200 text-center font-bold transition-colors ${bgColor}`}>
-                                          {displayValue}
-                                      </td>
-                                  );
-                                })}
-                                <td className="p-3 border-b border-slate-200 text-slate-500 italic bg-white max-w-xs truncate">
-                                    {displayNotes[`${day}-${slot}-notes`] || "-"}
-                                </td>
+                                {slotIndex === 0 && (
+                                  <td rowSpan={slots.length} className="p-3 border-r border-b border-slate-200 text-center font-bold bg-emerald-50 align-middle">
+                                    {displayNotes[`${day}-MANAGER`] || "-"}
+                                  </td>
+                                )}
+                                {isOpenClose ? (
+                                  <td colSpan={COLUMNS.length + 1} className="p-3 border-b border-slate-200 text-center">
+                                    <span className="text-xs font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
+                                  </td>
+                                ) : (
+                                  <>
+                                    {COLUMNS.map(col => {
+                                      const name = validData[`${day}-${slot}-${col.id}`];
+                                      const displayValue = name && name !== "None" ? name : "-";
+                                      const bgColor = name && name !== "None" ? getEmployeeColor(name) : (col.type === 'exec' ? 'bg-slate-50 text-slate-300' : 'bg-white text-slate-300');
+
+                                      return (
+                                          <td key={col.id} className={`p-3 border-r border-b border-slate-200 text-center font-bold transition-colors ${bgColor}`}>
+                                              {displayValue}
+                                          </td>
+                                      );
+                                    })}
+                                    <td className="p-3 border-b border-slate-200 text-slate-500 italic bg-white max-w-xs truncate">
+                                        {displayNotes[`${day}-${slot}-notes`] || "-"}
+                                    </td>
+                                  </>
+                                )}
                             </tr>
-                            ))}
+                              );
+                            })}
                         </tbody>
                         </table>
                     </div>

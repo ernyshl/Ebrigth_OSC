@@ -36,6 +36,7 @@ model BranchStaff {
   id        Int      @id @default(autoincrement())
   name      String
   branch    String   // e.g., 'Bandar Seri Putra' or 'Shah Alam'
+  role      String?  // e.g., 'part_time_coach', 'branch_manager', etc.
   createdAt DateTime @default(now())
 
   @@unique([name, branch]) // Prevents adding the same person twice to the same branch

@@ -1,4 +1,4 @@
-export const SHARED_EMPLOYEES = ["Iqbal", "Ying Chen", "Adam", "Faiq", "Salman"];
+export const SHARED_EMPLOYEES: string[] = [];
 
 export const ALL_BRANCHES = [
   "Subang Taipan", "Setia Alam", "Shah Alam", "Putrajaya", "Ampang", 
@@ -11,17 +11,55 @@ export const ALL_BRANCHES = [
 export const DAYS = ["Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 export const WEEKDAY_DAYS = ["Wednesday", "Thursday", "Friday"] as const;
 
-export const EMPLOYEE_COLORS: Record<string, string> = {
-  "Iqbal": "bg-blue-400 text-white border-blue-500",
-  "Ying Chen": "bg-pink-300 text-white border-pink-400",
-  "Adam": "bg-purple-400 text-white border-purple-500",
-  "Faiq": "bg-indigo-400 text-white border-indigo-500",
-  "Salman": "bg-teal-400 text-white border-teal-500",
-  "Sofia": "bg-orange-400 text-white border-orange-500",
-  "Dina": "bg-orange-400 text-white border-orange-500",
-  "Didi": "bg-orange-400 text-white border-orange-500",
-  "Mai": "bg-orange-400 text-white border-orange-500",
+export const BRANCH_WORKING_DAYS: Record<string, string[]> = {
+  "Ampang": ["Thursday", "Friday", "Saturday", "Sunday"],
 };
+
+export function getWorkingDaysForBranch(branchName: string): string[] {
+  return BRANCH_WORKING_DAYS[branchName] ?? [...DAYS];
+}
+
+export const EMPLOYEE_COLORS: Record<string, string> = {};
+
+const COLOR_PALETTE = [
+  "bg-red-500 text-white",
+  "bg-orange-500 text-white",
+  "bg-amber-500 text-white",
+  "bg-yellow-500 text-black",
+  "bg-lime-500 text-white",
+  "bg-green-500 text-white",
+  "bg-emerald-500 text-white",
+  "bg-teal-500 text-white",
+  "bg-cyan-500 text-white",
+  "bg-sky-500 text-white",
+  "bg-blue-500 text-white",
+  "bg-indigo-500 text-white",
+  "bg-violet-500 text-white",
+  "bg-purple-500 text-white",
+  "bg-fuchsia-500 text-white",
+  "bg-pink-500 text-white",
+  "bg-rose-500 text-white",
+  "bg-red-700 text-white",
+  "bg-blue-700 text-white",
+  "bg-green-700 text-white",
+  "bg-purple-700 text-white",
+  "bg-teal-700 text-white",
+  "bg-pink-700 text-white",
+  "bg-indigo-700 text-white",
+];
+
+function hashName(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+export function getEmployeeColor(name: string): string {
+  if (!name) return "bg-slate-400 text-white";
+  return COLOR_PALETTE[hashName(name) % COLOR_PALETTE.length];
+}
 
 export const COLUMNS = [
   { id: "coach1", label: "Coach 1", type: "coach" as const },
@@ -39,11 +77,23 @@ export const COLUMNS = [
 const DEFAULT_WEEKDAY_TIME_SLOTS = ["06.00PM - 07.15PM", "07:15PM - 08:30PM", "08.30PM - 09:45PM"] as const;
 const DEFAULT_WEEKEND_TIME_SLOTS = ["09:15 AM – 10:30 AM", "10:30 AM – 11:45 AM", "12:00 PM – 1:15 PM", "1:15 PM – 2:30 PM", "2:45 PM – 4:00 PM", "4:00 PM – 5:15 PM", "5:30 PM – 6:45 PM"] as const;
 const TAIPAN_WEEKDAY_TIME_SLOTS = ["4:15 PM", "04.30PM - 05.45PM", "06.00PM - 07.15PM", "07:15PM - 08:30PM", "08.30PM - 09:45PM", "10:00 PM"] as const;
+const AMPANG_WEEKDAY_TIME_SLOTS = ["5:00 PM - 6:00 PM", "06.00PM - 07.15PM", "07:15PM - 08:30PM", "08.30PM - 09:45PM", "9:45 PM - 10:00 PM"] as const;
+const AMPANG_WEEKEND_TIME_SLOTS = ["8:45 AM - 9:15 AM", "09:15 AM – 10:30 AM", "10:30 AM – 11:45 AM", "12:00 PM – 1:15 PM", "1:15 PM – 2:30 PM", "2:45 PM – 4:00 PM", "4:00 PM – 5:15 PM", "5:30 PM – 6:45 PM", "6:45 PM - 7:15 PM"] as const;
 
 export const BRANCH_SLOTS_CONFIG: Record<string, { weekday: readonly string[], weekend: readonly string[] }> = {
   "Subang Taipan": { weekday: TAIPAN_WEEKDAY_TIME_SLOTS, weekend: DEFAULT_WEEKEND_TIME_SLOTS },
+  "Ampang": { weekday: AMPANG_WEEKDAY_TIME_SLOTS, weekend: AMPANG_WEEKEND_TIME_SLOTS },
   "default": { weekday: DEFAULT_WEEKDAY_TIME_SLOTS, weekend: DEFAULT_WEEKEND_TIME_SLOTS }
 };
+
+// Slots that are fixed "all-staff" opening/closing slots — excluded from hours summary
+const OPENING_CLOSING_SLOTS: Record<string, string[]> = {
+  "Ampang": ["5:00 PM - 6:00 PM", "9:45 PM - 10:00 PM", "8:45 AM - 9:15 AM", "6:45 PM - 7:15 PM"],
+};
+
+export function isOpeningClosingSlot(slot: string, branchName: string): boolean {
+  return (OPENING_CLOSING_SLOTS[branchName] ?? []).includes(slot);
+}
 
 export function getTimeSlotsForDay(day: string, branchName: string): readonly string[] {
   const config = BRANCH_SLOTS_CONFIG[branchName] || BRANCH_SLOTS_CONFIG["default"];

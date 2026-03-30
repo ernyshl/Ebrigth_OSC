@@ -10,11 +10,11 @@ import "react-date-range/dist/theme/default.css";
 import Sidebar from "@/app/components/Sidebar";
 
 // --- IMPORT SHARED CONSTANTS ---
-import { 
-  SHARED_EMPLOYEES, ALL_BRANCHES, DAYS, WEEKDAY_DAYS, 
-  EMPLOYEE_COLORS, COLUMNS, BRANCH_SLOTS_CONFIG, 
-  getTimeSlotsForDay, isAdminSlot, 
-  SELECT_ARROW_WHITE, SELECT_ARROW_DARK 
+import {
+  SHARED_EMPLOYEES, ALL_BRANCHES,
+  COLUMNS,
+  getTimeSlotsForDay, isAdminSlot, getEmployeeColor,
+  getWorkingDaysForBranch, isOpeningClosingSlot,
 } from "@/lib/manpowerUtils";
 
 // --- DATE FORMATTING HELPERS ---
@@ -106,10 +106,10 @@ export default function UpdateSchedulePage() {
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [updatedSelections, setUpdatedSelections] = useState<Record<string, string>>({});
   const [updatedNotes, setUpdatedNotes] = useState<Record<string, string>>({});
-  const [dayBranches, setDayBranches] = useState<Record<string, string>>({});
   const [branchStaffData, setBranchStaffData] = useState<Record<string, string[]>>({});
-  const [newStaffInput, setNewStaffInput] = useState("");
-  const [activeAddingBranch, setActiveAddingBranch] = useState<string>("");
+  const [branchManagerData, setBranchManagerData] = useState<Record<string, string[]>>({});
+  const [columnReplacementBranch, setColumnReplacementBranch] = useState<Record<string, string>>({});
+  const [managerReplacementBranch, setManagerReplacementBranch] = useState<Record<string, string>>({});
   
   // --- LIVE DB STATE ---
   const [history, setHistory] = useState<any[]>([]); // Replaced localStorage
@@ -144,11 +144,24 @@ export default function UpdateSchedulePage() {
         setIsLoading(false);
       }
     };
+    const fetchStaff = async () => {
+      const res = await fetch('/api/branch-staff');
+      const staffList = await res.json();
+      const grouped: Record<string, string[]> = {};
+      const managers: Record<string, string[]> = {};
+      staffList.forEach((s: any) => {
+        if (!grouped[s.branch]) grouped[s.branch] = [];
+        grouped[s.branch].push(s.name);
+        if (s.role && s.role.startsWith('branch_manager')) {
+          if (!managers[s.branch]) managers[s.branch] = [];
+          managers[s.branch].push(s.name);
+        }
+      });
+      setBranchStaffData(grouped);
+      setBranchManagerData(managers);
+    };
     fetchSchedules();
-
-    // Still using localStorage for custom branch staff inputs for now
-    const saved = localStorage.getItem("branch_custom_staff");
-    if (saved) setBranchStaffData(JSON.parse(saved));
+    fetchStaff();
   }, []);
 
   // Safely extract user info
@@ -170,55 +183,6 @@ export default function UpdateSchedulePage() {
   }, [history, filterBranch, filterDate, userRole, userBranch]);
 
 
-  const handleAddStaff = async () => {
-  if (!activeAddingBranch || !newStaffInput.trim()) return;
-  
-  const name = newStaffInput.trim();
-
-  try {
-    // 1. Send to the Database API
-    const res = await fetch('/api/branch-staff', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, branch: activeAddingBranch })
-    });
-
-    if (res.ok) {
-      // 2. Update the screen immediately if the database save worked
-      setBranchStaffData(prev => ({
-        ...prev,
-        [activeAddingBranch]: [...(prev[activeAddingBranch] || []), name]
-      }));
-      setNewStaffInput("");
-    } else {
-      const errorData = await res.json();
-      alert(errorData.error || "Failed to add staff");
-    }
-  } catch (err) {
-    console.error("Error adding staff:", err);
-  }
-};
-
-  const handleRemoveStaff = async (branch: string, name: string) => {
-  if (!window.confirm(`Remove ${name} from ${branch}?`)) return;
-
-  try {
-    const res = await fetch('/api/branch-staff', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, branch })
-    });
-
-    if (res.ok) {
-      setBranchStaffData(prev => ({
-        ...prev,
-        [branch]: prev[branch].filter(s => s !== name)
-      }));
-    }
-  } catch (err) {
-    console.error("Error removing staff:", err);
-  }
-};
 
   const handleSelectRecord = (record: any) => {
     setSelectedRecord(record);
@@ -229,12 +193,11 @@ export default function UpdateSchedulePage() {
   const handleActualNameSelect = (day: string, targetTime: string, colId: string, name: string) => {
     setUpdatedSelections((prev) => {
       const next = { ...prev };
-      const branchForThisDay = dayBranches[day] || selectedRecord.branch;
       if (!name || name === "None") {
         delete next[`${day}-${targetTime}-${colId}`];
         return next;
       }
-      getTimeSlotsForDay(day, branchForThisDay).forEach((slot) => {
+      getTimeSlotsForDay(day, selectedRecord.branch).forEach((slot) => {
         next[`${day}-${slot}-${colId}`] = name;
       });
       return next;
@@ -263,15 +226,17 @@ export default function UpdateSchedulePage() {
     const dataToCalculate = isOriginalData ? (selectedRecord.originalSelections || selectedRecord.selections) : selections;
     if (!dataToCalculate) return [];
 
+    const managerNames = new Set(branchManagerData[selectedRecord.branch] || []);
+    const allBranchStaff = (branchStaffData[selectedRecord.branch] || []).filter(n => !managerNames.has(n));
     const uniqueEmployeesToTrack: string[] = Array.from(new Set([
-      ...SHARED_EMPLOYEES, 
-      ...(Object.values(dataToCalculate) as string[])
-    ])).filter(e => e && e !== "None");
+      ...allBranchStaff,
+      ...(Object.values(dataToCalculate) as string[]).filter(e => e && e !== "None" && !managerNames.has(e))
+    ]));
 
     const staffStats: Record<string, { coachHrs: number; execHrs: number; total: number }> = {};
     uniqueEmployeesToTrack.forEach(emp => { staffStats[emp] = { coachHrs: 0, execHrs: 0, total: 0 }; });
 
-    DAYS.forEach((day) => {
+    getWorkingDaysForBranch(selectedRecord.branch).forEach((day) => {
       const isWeekend = day === "Saturday" || day === "Sunday";
       const dailyTarget = isWeekend ? 10.5 : 5.0;
       const branchForDay = selectedRecord.branch;
@@ -280,6 +245,7 @@ export default function UpdateSchedulePage() {
         let coachingHoursForDay = 0;
         let workedThatDay = false;
         getTimeSlotsForDay(day, branchForDay).forEach((slot: string) => {
+          if (isOpeningClosingSlot(slot, branchForDay)) return;
           COLUMNS.forEach((col) => {
             if (dataToCalculate[`${day}-${slot}-${col.id}`] === emp) {
               workedThatDay = true;
@@ -384,43 +350,13 @@ export default function UpdateSchedulePage() {
           </div>
 
           <div className="flex-1 overflow-y-auto w-full mx-auto px-4 md:px-6 pb-20">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-4">
-              <div className="lg:col-span-5 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                <label className="text-[10px] font-black uppercase text-slate-500 block mb-2">STEP 1: SELECT BRANCHES</label>
-                <div className="grid grid-cols-1 gap-1">
-                  {DAYS.map(day => (
-                    <div key={day} className={`flex items-center justify-between p-1.5 rounded-lg border transition-all ${activeAddingBranch === dayBranches[day] && dayBranches[day] ? 'bg-orange-50 border-orange-200' : 'bg-slate-50 border-slate-100'}`}>
-                      <span className="text-[9px] font-black uppercase w-20">{day}</span>
-                      <select value={dayBranches[day] || ""} onChange={(e) => {setDayBranches(p=>({...p, [day]: e.target.value})); setActiveAddingBranch(e.target.value);}} className="text-[9px] bg-transparent font-bold text-blue-600 outline-none">
-                        <option value="">Select Branch...</option>
-                        {ALL_BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
-                      </select>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="lg:col-span-7 bg-white p-4 rounded-xl shadow-sm border border-orange-200">
-                <label className="text-[10px] font-black uppercase text-orange-600 block mb-2 font-bold">STEP 2: ADD STAFF FOR {activeAddingBranch || '...'}</label>
-                <div className="flex gap-2 mb-2">
-                  <input type="text" disabled={!activeAddingBranch} value={newStaffInput} onChange={(e) => setNewStaffInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddStaff()} placeholder="Enter name..." className="flex-1 border rounded-lg px-3 py-1.5 text-xs outline-none" />
-                  <button onClick={handleAddStaff} className="bg-orange-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold uppercase">Add Staff</button>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {activeAddingBranch && branchStaffData[activeAddingBranch]?.map(s => (
-                    <span key={s} className="bg-white text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm flex items-center gap-1.5">{s} <button onClick={() => handleRemoveStaff(activeAddingBranch, s)} className="text-red-400">×</button></span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
             <div className="space-y-6 mb-10">
-              {DAYS.map((day) => {
-                const branchForThisDay = dayBranches[day] || selectedRecord.branch;
-                const slots = getTimeSlotsForDay(day, branchForThisDay);
-                
+              {getWorkingDaysForBranch(selectedRecord.branch).map((day) => {
+                const slots = getTimeSlotsForDay(day, selectedRecord.branch);
+
                 const activeStaffList = Array.from(new Set([
-                    ...SHARED_EMPLOYEES, 
-                    ...(branchStaffData[branchForThisDay] || []),
+                    ...SHARED_EMPLOYEES,
+                    ...(branchStaffData[selectedRecord.branch] || []),
                     ...globalUsedNames
                 ]));
 
@@ -440,12 +376,18 @@ export default function UpdateSchedulePage() {
                             Planning
                         </div>
                         <div className="overflow-x-auto border rounded relative">
-                          <table className="w-full border-collapse text-[9px]" style={{ minWidth: '1500px' }}>
+                          <table className="w-full border-collapse text-[9px]" style={{ minWidth: '1700px' }}>
                             <thead>
                               <tr className="bg-slate-700 text-white text-center h-[40px]">
                                 <th className="p-1 border border-slate-600 w-32 sticky left-0 z-20 bg-slate-700">
                                   <div className="flex flex-col items-center">
                                       <span>Slot</span>
+                                      <span className="text-[6px] invisible py-0.5">CLEAR</span>
+                                  </div>
+                                </th>
+                                <th className="p-1 border border-slate-600 w-24 bg-slate-700 border-b-2 border-b-emerald-400">
+                                  <div className="flex flex-col items-center">
+                                      <span>Manager</span>
                                       <span className="text-[6px] invisible py-0.5">CLEAR</span>
                                   </div>
                                 </th>
@@ -466,16 +408,32 @@ export default function UpdateSchedulePage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {slots.map(slot => (
-                                <tr key={slot} className="h-[32px]">
-                                  <td className="p-1 border bg-slate-50 font-bold sticky left-0 z-10 h-[32px]">{slot}</td>
-                                  {COLUMNS.map(col => {
-                                    const name = (selectedRecord.originalSelections || selectedRecord.selections)[`${day}-${slot}-${col.id}`];
-                                    return <td key={col.id} className={`p-1 border text-center font-bold h-[32px] ${name ? (EMPLOYEE_COLORS[name] || 'bg-slate-500 text-white') : 'bg-white'}`}>{name || "-"}</td>;
-                                  })}
-                                  <td className="p-1 border bg-white italic text-slate-400 h-[32px]">...</td>
+                              {slots.map((slot, slotIndex) => {
+                                const isOpenClose = isOpeningClosingSlot(slot, selectedRecord.branch);
+                                return (
+                                <tr key={slot} className={`h-[32px] ${isOpenClose ? 'bg-blue-50' : ''}`}>
+                                  <td className={`p-1 border font-bold sticky left-0 z-10 h-[32px] ${isOpenClose ? 'bg-blue-100' : 'bg-slate-50'}`}>{slot}</td>
+                                  {slotIndex === 0 && (
+                                    <td rowSpan={slots.length} className="p-1 border bg-emerald-50 text-center font-bold align-middle">
+                                      {(selectedRecord.notes || selectedRecord.originalNotes || {})[`${day}-MANAGER`] || "-"}
+                                    </td>
+                                  )}
+                                  {isOpenClose ? (
+                                    <td colSpan={COLUMNS.length + 1} className="p-1 border text-center">
+                                      <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
+                                    </td>
+                                  ) : (
+                                    <>
+                                      {COLUMNS.map(col => {
+                                        const name = (selectedRecord.originalSelections || selectedRecord.selections)[`${day}-${slot}-${col.id}`];
+                                        return <td key={col.id} className={`p-1 border text-center font-bold h-[32px] ${name ? getEmployeeColor(name) : 'bg-white'}`}>{name || "-"}</td>;
+                                      })}
+                                      <td className="p-1 border bg-white italic text-slate-400 h-[32px]">...</td>
+                                    </>
+                                  )}
                                 </tr>
-                              ))}
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -485,7 +443,7 @@ export default function UpdateSchedulePage() {
                       <div className="flex-1 flex flex-col min-w-0">
                         <div className="bg-orange-600 p-1.5 flex justify-between items-center mb-1 rounded text-white tracking-widest h-8 sticky left-0 right-0 z-30">
                             <div className="w-fit min-w-[100px] text-[8px] font-black bg-black/10 px-2 py-1 rounded">
-                                {branchForThisDay}
+                                {selectedRecord.branch}
                             </div>
                             <span className="font-bold text-[9px] uppercase">Actual</span>
                             <div className="w-24 flex justify-end">
@@ -493,7 +451,7 @@ export default function UpdateSchedulePage() {
                             </div>
                         </div>
                         <div className="overflow-x-auto border rounded relative">
-                          <table className="w-full border-collapse text-[9px]" style={{ minWidth: '1500px' }}>
+                          <table className="w-full border-collapse text-[9px]" style={{ minWidth: '1700px' }}>
                             <thead>
                               <tr className="bg-[#2D3F50] text-white h-[40px]">
                                 <th className="p-1 border border-slate-900 w-32 sticky left-0 z-20 bg-[#2D3F50]">
@@ -502,10 +460,35 @@ export default function UpdateSchedulePage() {
                                       <span className="text-[6px] invisible py-0.5">CLEAR</span>
                                   </div>
                                 </th>
+                                <th className="p-1 border border-slate-900 w-24 bg-slate-700 border-b-2 border-b-emerald-400">
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    <span>Manager</span>
+                                    <select
+                                      value={managerReplacementBranch[day] || ""}
+                                      onChange={(e) => setManagerReplacementBranch(prev => ({ ...prev, [day]: e.target.value }))}
+                                      className="text-[7px] bg-slate-600 text-white border-none rounded px-1 py-0.5 w-full appearance-none text-center"
+                                    >
+                                      <option value="">Own Branch</option>
+                                      {ALL_BRANCHES.filter(b => b !== selectedRecord.branch).map(b => (
+                                        <option key={b} value={b}>{b}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </th>
                                 {COLUMNS.map(c => (
                                   <th key={c.id} className={`p-1 border border-slate-900 w-24 ${c.type==='exec'?'bg-slate-700 border-b-2 border-b-blue-400':''}`}>
-                                    <div className="flex flex-col items-center">
+                                    <div className="flex flex-col items-center gap-0.5">
                                       <span>{c.label}</span>
+                                      <select
+                                        value={columnReplacementBranch[`${day}-${c.id}`] || ""}
+                                        onChange={(e) => setColumnReplacementBranch(prev => ({ ...prev, [`${day}-${c.id}`]: e.target.value }))}
+                                        className="text-[7px] bg-slate-600 text-white border-none rounded px-1 py-0.5 w-full appearance-none text-center"
+                                      >
+                                        <option value="">Own Branch</option>
+                                        {ALL_BRANCHES.filter(b => b !== selectedRecord.branch).map(b => (
+                                          <option key={b} value={b}>{b}</option>
+                                        ))}
+                                      </select>
                                       <button onClick={() => handleClearColumn(day, c.id)} className="text-[6px] text-orange-300 font-bold hover:text-white py-0.5">CLEAR</button>
                                     </div>
                                   </th>
@@ -519,27 +502,60 @@ export default function UpdateSchedulePage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {slots.map(slot => (
-                                <tr key={slot} className="group h-[32px]">
-                                  <td className="p-1 border bg-orange-50 font-bold sticky left-0 z-10 group-hover:bg-orange-100 h-[32px]">{slot}</td>
-                                  {COLUMNS.map(col => {
-                                    const val = updatedSelections[`${day}-${slot}-${col.id}`] || "";
-                                    const others = COLUMNS.filter(c => c.id !== col.id).map(c => updatedSelections[`${day}-${slot}-${c.id}`]).filter(Boolean);
-                                    return (
-                                      <td key={col.id} className={`p-0 border h-[32px] ${col.type==='exec' ? 'bg-slate-50' : 'bg-white'}`}>
-                                        <select value={val} onChange={(e) => handleActualNameSelect(day, slot, col.id, e.target.value)} 
-                                          className={`w-full h-full p-1 outline-none font-bold text-center appearance-none block ${val ? (EMPLOYEE_COLORS[val] || 'bg-orange-500 text-white') : 'bg-transparent text-slate-300'}`}>
-                                          <option value="">-</option>
-                                          {activeStaffList.map(e => <option key={e} value={e} disabled={others.includes(e)} className="text-black">{e}</option>)}
-                                        </select>
+                              {slots.map((slot, slotIndex) => {
+                                const isOpenClose = isOpeningClosingSlot(slot, selectedRecord.branch);
+                                return (
+                                <tr key={slot} className={`group h-[32px] ${isOpenClose ? 'bg-blue-50' : ''}`}>
+                                  <td className={`p-1 border font-bold sticky left-0 z-10 h-[32px] ${isOpenClose ? 'bg-blue-100' : 'bg-orange-50 group-hover:bg-orange-100'}`}>{slot}</td>
+                                  {slotIndex === 0 && (
+                                    <td rowSpan={slots.length} className="p-1 border bg-emerald-50 align-middle">
+                                      <select
+                                        value={updatedNotes[`${day}-MANAGER`] || ""}
+                                        onChange={(e) => setUpdatedNotes(p => ({ ...p, [`${day}-MANAGER`]: e.target.value }))}
+                                        className="w-full p-1 text-[9px] font-bold text-center border border-emerald-200 rounded bg-white appearance-none outline-none"
+                                      >
+                                        <option value="">-- Select --</option>
+                                        {(branchManagerData[managerReplacementBranch[day] || selectedRecord.branch] || []).map(e => (
+                                          <option key={e} value={e}>{e}</option>
+                                        ))}
+                                      </select>
+                                    </td>
+                                  )}
+                                  {isOpenClose ? (
+                                    <td colSpan={COLUMNS.length + 1} className="p-1 border text-center">
+                                      <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
+                                    </td>
+                                  ) : (
+                                    <>
+                                      {COLUMNS.map(col => {
+                                        const val = updatedSelections[`${day}-${slot}-${col.id}`] || "";
+                                        const replacementBranch = columnReplacementBranch[`${day}-${col.id}`];
+                                        const colStaffList = replacementBranch
+                                          ? (branchStaffData[replacementBranch] || [])
+                                          : activeStaffList;
+                                        const namesUsedInOtherColumns = new Set(
+                                          COLUMNS.filter(c => c.id !== col.id)
+                                            .flatMap(c => slots.map(s => updatedSelections[`${day}-${s}-${c.id}`]))
+                                            .filter(Boolean)
+                                        );
+                                        return (
+                                          <td key={col.id} className={`p-0 border h-[32px] ${col.type==='exec' ? 'bg-slate-50' : 'bg-white'}`}>
+                                            <select value={val} onChange={(e) => handleActualNameSelect(day, slot, col.id, e.target.value)}
+                                              className={`w-full h-full p-1 outline-none font-bold text-center appearance-none block ${val ? getEmployeeColor(val) : 'bg-transparent text-slate-300'}`}>
+                                              <option value="">-</option>
+                                              {colStaffList.map(e => <option key={e} value={e} disabled={namesUsedInOtherColumns.has(e)} className="text-black">{e}</option>)}
+                                            </select>
+                                          </td>
+                                        );
+                                      })}
+                                      <td className="p-0 border bg-white h-[32px]">
+                                        <textarea value={updatedNotes[`${day}-${slot}-notes`] || ""} onChange={(e) => setUpdatedNotes(p => ({...p, [`${day}-${slot}-notes`]: e.target.value}))} className="w-full h-full p-1 text-[8px] resize-none outline-none italic text-slate-600 block" />
                                       </td>
-                                    );
-                                  })}
-                                  <td className="p-0 border bg-white h-[32px]">
-                                    <textarea value={updatedNotes[`${day}-${slot}-notes`] || ""} onChange={(e) => setUpdatedNotes(p => ({...p, [`${day}-${slot}-notes`]: e.target.value}))} className="w-full h-full p-1 text-[8px] resize-none outline-none italic text-slate-600 block" />
-                                  </td>
+                                    </>
+                                  )}
                                 </tr>
-                              ))}
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
