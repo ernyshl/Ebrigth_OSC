@@ -552,8 +552,9 @@ function PlanNewWeekPage() {
                                       ? (branchStaffData[replacementBranch] || [])
                                       : activeStaffList;
                                     const managerName = notes[`${day}-MANAGER`] || "";
+                                    // Only conflict within the same type (coach vs coach, exec vs exec)
                                     const namesUsedInOtherColumns = new Set([
-                                      ...COLUMNS.filter(c => c.id !== col.id)
+                                      ...COLUMNS.filter(c => c.id !== col.id && c.type === col.type)
                                         .flatMap(c => daySlots.map(s => selections[`${day}-${s}-${c.id}`]))
                                         .filter(Boolean),
                                       ...(managerName ? [managerName] : []),
