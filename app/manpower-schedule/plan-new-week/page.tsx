@@ -244,11 +244,9 @@ function PlanNewWeekPage() {
       const next = { ...prev };
       if (!name) {
         delete next[`${day}-${targetTime}-${columnId}`];
-        return next;
+      } else {
+        next[`${day}-${targetTime}-${columnId}`] = name;
       }
-      getTimeSlotsForDay(day, selectedBranch).forEach((slot) => {
-        next[`${day}-${slot}-${columnId}`] = name;
-      });
       return next;
     });
   };
