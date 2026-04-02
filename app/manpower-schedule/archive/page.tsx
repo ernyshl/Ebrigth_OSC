@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { format, parseISO, addDays, startOfWeek, endOfWeek } from "date-fns"; 
 import { DateRange, RangeKeyDict } from "react-date-range"; 
-import { useSession } from "next-auth/react"; // <-- 1. IMPORT SESSION
+import { useSession } from "next-auth/react";
 import "react-date-range/dist/styles.css"; 
 import "react-date-range/dist/theme/default.css"; 
 import Sidebar from "@/app/components/Sidebar";
@@ -14,6 +14,7 @@ import {
   COLUMNS, ALL_BRANCHES,
   getTimeSlotsForDay, isAdminSlot, getEmployeeColor,
   getWorkingDaysForBranch, isOpeningClosingSlot,
+  isManagerOnDutySlot, // <-- NEW IMPORT
 } from "@/lib/manpowerUtils";
 
 
@@ -78,11 +79,11 @@ const SummaryTable = ({ data }: { data: any[] }) => {
 
 export default function ArchiveSchedulePage() {
   const router = useRouter();
-  const { data: session } = useSession(); // <-- 2. GRAB SESSION
+  const { data: session } = useSession();
   
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]); // <-- 3. USE STATE INSTEAD OF LOCALSTORAGE
+  const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [branchStaffData, setBranchStaffData] = useState<Record<string, string[]>>({});
   const [branchManagerData, setBranchManagerData] = useState<Record<string, string[]>>({});
@@ -167,15 +168,12 @@ export default function ArchiveSchedulePage() {
   // --- APPLY FILTERS & ROLE SECURITY TO THE LIST ---
   const filteredHistory = useMemo(() => {
     return history.filter((record: any) => {
-      // 1. SECURITY FILTER: Branch Managers ONLY see their own branch!
+      // SECURITY FILTER: Branch Managers ONLY see their own branch!
       if (userRole === "BRANCH_MANAGER" && record.branch !== userBranch) {
         return false;
       }
-
-      // 2. Standard Filters
       const matchBranch = filterBranch ? record.branch === filterBranch : true;
       const matchWeek = filterDate ? record.startDate === filterDate : true;
-      
       return matchBranch && matchWeek;
     });
   }, [history, filterBranch, filterDate, userRole, userBranch]);
@@ -215,7 +213,6 @@ export default function ArchiveSchedulePage() {
           COLUMNS.forEach((col) => {
             if (validData[`${day}-${slot}-${col.id}`] === emp) {
               workedThatDay = true;
-              
               if (col.type === "coach") {
                   const slotDuration = isAdminSlot(slot, selectedRecord.branch) ? 0.25 : 1.25;
                   coachingHoursForDay += slotDuration;
@@ -256,7 +253,6 @@ export default function ArchiveSchedulePage() {
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center gap-6 mb-6">
               <div className="flex items-center gap-6">
                 
-                {/* HAMBURGER BUTTON TO OPEN SIDEBAR */}
                 {!sidebarOpen && (
                   <button
                     onClick={() => setSidebarOpen(true)}
@@ -278,7 +274,6 @@ export default function ArchiveSchedulePage() {
                 <div className="h-8 w-px bg-slate-300"></div>
                 <h1 className="text-2xl font-black uppercase tracking-wide text-slate-800 leading-none m-0 flex items-center gap-4">
                   <span>Archived: {selectedRecord.branch}</span>
-                  
                   {selectedRecord.startDate && selectedRecord.endDate && (
                     <span className="text-sm bg-slate-100 text-slate-500 border border-slate-200 px-3 py-1.5 rounded-lg font-bold tracking-widest uppercase">
                       {formatDateString(selectedRecord.startDate)} - {formatDateString(selectedRecord.endDate)}
@@ -323,39 +318,64 @@ export default function ArchiveSchedulePage() {
                         <tbody>
                             {slots.map((slot, slotIndex) => {
                               const isOpenClose = isOpeningClosingSlot(slot, selectedRecord.branch);
-                              return (
-                            <tr key={slot} className={`group ${isOpenClose ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
-                                <td className={`p-3 border-r border-b border-slate-200 font-bold text-slate-900 sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] transition-colors ${isOpenClose ? 'bg-blue-100' : 'bg-slate-50 group-hover:bg-slate-100'}`}>
-                                    {slot}
-                                </td>
-                                {slotIndex === 0 && (
-                                  <td rowSpan={slots.length} className="p-3 border-r border-b border-slate-200 text-center font-bold bg-emerald-50 align-middle">
-                                    {displayNotes[`${day}-MANAGER`] || "-"}
-                                  </td>
-                                )}
-                                {isOpenClose ? (
-                                  <td colSpan={COLUMNS.length + 1} className="p-3 border-b border-slate-200 text-center">
-                                    <span className="text-xs font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
-                                  </td>
-                                ) : (
-                                  <>
-                                    {COLUMNS.map(col => {
-                                      const name = validData[`${day}-${slot}-${col.id}`];
-                                      const displayValue = name && name !== "None" ? name : "-";
-                                      const bgColor = name && name !== "None" ? getEmployeeColor(name) : (col.type === 'exec' ? 'bg-slate-50 text-slate-300' : 'bg-white text-slate-300');
+                              // --- KEY FIX: check if manager dropdown applies per slot ---
+                              const showManager = isManagerOnDutySlot(slot, selectedRecord.branch, day);
+                              
+                              // Support both old format (notes[day-MANAGER]) and new format (selections[day-slot-MANAGER])
+                              const managerName =
+                                validData[`${day}-${slot}-MANAGER`] ||           // new format (post-fix)
+                                displayNotes[`${day}-MANAGER`] ||                 // old format (pre-fix, legacy records)
+                                "";
 
-                                      return (
-                                          <td key={col.id} className={`p-3 border-r border-b border-slate-200 text-center font-bold transition-colors ${bgColor}`}>
-                                              {displayValue}
-                                          </td>
-                                      );
-                                    })}
-                                    <td className="p-3 border-b border-slate-200 text-slate-500 italic bg-white max-w-xs truncate">
-                                        {displayNotes[`${day}-${slot}-notes`] || "-"}
+                              return (
+                                <tr key={slot} className={`group ${isOpenClose ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
+                                  <td className={`p-3 border-r border-b border-slate-200 font-bold text-slate-900 sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] transition-colors ${isOpenClose ? 'bg-blue-100' : 'bg-slate-50 group-hover:bg-slate-100'}`}>
+                                      {slot}
+                                  </td>
+
+                                  {/* ---- MANAGER ON DUTY CELL (fixed: no rowSpan, per-slot logic) ---- */}
+                                  {!isOpenClose && (
+                                    <td className="p-2 border-r border-b border-slate-200 text-center font-bold bg-emerald-50 w-[180px]">
+                                      {showManager ? (
+                                        // Show manager name for slots where manager is on duty
+                                        managerName ? (
+                                          <span className={`inline-block w-full px-2 py-1.5 rounded text-xs font-bold ${getEmployeeColor(managerName)}`}>
+                                            {managerName}
+                                          </span>
+                                        ) : (
+                                          <span className="text-slate-300 font-bold">-</span>
+                                        )
+                                      ) : (
+                                        // Empty placeholder for slots after manager's shift (e.g. 08:30PM onwards)
+                                        <div className="w-full h-[28px] rounded bg-emerald-100/50 border border-dashed border-emerald-200 flex items-center justify-center">
+                                          <span className="text-[9px] text-emerald-300 font-bold uppercase tracking-wider">—</span>
+                                        </div>
+                                      )}
                                     </td>
-                                  </>
-                                )}
-                            </tr>
+                                  )}
+
+                                  {isOpenClose ? (
+                                    <td colSpan={COLUMNS.length + 1} className="p-3 border-b border-slate-200 text-center">
+                                      <span className="text-xs font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
+                                    </td>
+                                  ) : (
+                                    <>
+                                      {COLUMNS.map(col => {
+                                        const name = validData[`${day}-${slot}-${col.id}`];
+                                        const displayValue = name && name !== "None" ? name : "-";
+                                        const bgColor = name && name !== "None" ? getEmployeeColor(name) : (col.type === 'exec' ? 'bg-slate-50 text-slate-300' : 'bg-white text-slate-300');
+                                        return (
+                                            <td key={col.id} className={`p-3 border-r border-b border-slate-200 text-center font-bold transition-colors ${bgColor}`}>
+                                                {displayValue}
+                                            </td>
+                                        );
+                                      })}
+                                      <td className="p-3 border-b border-slate-200 text-slate-500 italic bg-white max-w-xs truncate">
+                                          {displayNotes[`${day}-${slot}-notes`] || "-"}
+                                      </td>
+                                    </>
+                                  )}
+                                </tr>
                               );
                             })}
                         </tbody>
@@ -382,10 +402,8 @@ export default function ArchiveSchedulePage() {
           <main className="flex-1 h-screen flex flex-col overflow-hidden" style={{ zoom: 0.9 }}>
               
               <div className="shrink-0 w-full max-w-6xl mx-auto px-4 md:px-6 pt-4 md:pt-6 z-50 bg-slate-50">
-                  {/* LIST TOP BAR */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-6 mb-6">
                     
-                    {/* HAMBURGER BUTTON TO OPEN SIDEBAR */}
                     {!sidebarOpen && (
                       <button
                         onClick={() => setSidebarOpen(true)}
@@ -416,7 +434,6 @@ export default function ArchiveSchedulePage() {
                   {/* FILTER CONTROLS */}
                   <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 mb-6 relative">
                     
-                    {/* ONLY SHOW BRANCH FILTER IF USER IS NOT A BRANCH MANAGER */}
                     {userRole !== "BRANCH_MANAGER" && (
                       <div className="flex-1">
                         <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Filter by Branch</label>
@@ -565,12 +582,9 @@ export default function ArchiveSchedulePage() {
                   if (selection.startDate) {
                     const start = startOfWeek(selection.startDate, { weekStartsOn: 1 });
                     const end = endOfWeek(selection.startDate, { weekStartsOn: 1 });
-                    
                     setRange([{ startDate: start, endDate: end, key: "selection" }]);
                     setIsDateFiltered(true);
-                    
                     setFilterDate(format(start, "yyyy-MM-dd")); 
-                    
                     setTimeout(() => setShowCalendar(false), 250);
                   }
                 }}

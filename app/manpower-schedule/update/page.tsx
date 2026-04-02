@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { format, parseISO, addDays, startOfWeek, endOfWeek } from "date-fns"; 
 import { DateRange, RangeKeyDict } from "react-date-range"; 
-import { useSession } from "next-auth/react"; // <-- 1. IMPORT SESSION
+import { useSession } from "next-auth/react";
 import "react-date-range/dist/styles.css"; 
 import "react-date-range/dist/theme/default.css"; 
 import Sidebar from "@/app/components/Sidebar";
@@ -15,6 +15,7 @@ import {
   COLUMNS,
   getTimeSlotsForDay, isAdminSlot, getEmployeeColor,
   getWorkingDaysForBranch, isOpeningClosingSlot,
+  isManagerOnDutySlot, // <-- NEW IMPORT
 } from "@/lib/manpowerUtils";
 
 // --- DATE FORMATTING HELPERS ---
@@ -42,7 +43,6 @@ const getDateForDay = (dayName: string, startDateStr: string) => {
   }
   return "";
 };
-// -----------------------------------
 
 // --- HELPER COMPONENT: DETAILED SUMMARY TABLE ---
 const SummaryTable = ({ title, data, theme = "blue" }: { title: string, data: any[], theme?: "blue" | "orange" }) => {
@@ -100,7 +100,7 @@ const SummaryTable = ({ title, data, theme = "blue" }: { title: string, data: an
 
 export default function UpdateSchedulePage() {
   const router = useRouter();
-  const { data: session } = useSession(); // <-- 2. GRAB SESSION
+  const { data: session } = useSession();
   
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
@@ -111,15 +111,12 @@ export default function UpdateSchedulePage() {
   const [columnReplacementBranch, setColumnReplacementBranch] = useState<Record<string, string>>({});
   const [managerReplacementBranch, setManagerReplacementBranch] = useState<Record<string, string>>({});
   
-  // --- LIVE DB STATE ---
-  const [history, setHistory] = useState<any[]>([]); // Replaced localStorage
+  const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // --- FILTER STATES ---
   const [filterBranch, setFilterBranch] = useState<string>("");
   const [filterDate, setFilterDate] = useState<string>(""); 
   
-  // --- CALENDAR POPOVER STATES ---
   const [showCalendar, setShowCalendar] = useState(false);
   const [shownDate, setShownDate] = useState(new Date());
   const [isDateFiltered, setIsDateFiltered] = useState(false);
@@ -129,15 +126,12 @@ export default function UpdateSchedulePage() {
     key: "selection",
   }]);
 
-  // --- FETCH DATA FROM POSTGRESQL ---
   useEffect(() => {
     const fetchSchedules = async () => {
       try {
         const res = await fetch('/api/get-schedules');
         const data = await res.json();
-        if (data.success) {
-          setHistory(data.schedules);
-        }
+        if (data.success) setHistory(data.schedules);
       } catch (err) {
         console.error("Failed to load schedules", err);
       } finally {
@@ -164,25 +158,17 @@ export default function UpdateSchedulePage() {
     fetchStaff();
   }, []);
 
-  // Safely extract user info
   const userRole = (session?.user as any)?.role || "USER";
   const userBranch = (session?.user as any)?.branchName;
 
-  // --- APPLY FILTERS & ROLE SECURITY TO THE LIST ---
   const filteredHistory = useMemo(() => {
     return history.filter((record: any) => {
-      // SECURITY: BM only sees their branch
-      if (userRole === "BRANCH_MANAGER" && record.branch !== userBranch) {
-        return false;
-      }
-      
+      if (userRole === "BRANCH_MANAGER" && record.branch !== userBranch) return false;
       const matchBranch = filterBranch ? record.branch === filterBranch : true;
       const matchWeek = filterDate ? record.startDate === filterDate : true;
       return matchBranch && matchWeek;
     });
   }, [history, filterBranch, filterDate, userRole, userBranch]);
-
-
 
   const handleSelectRecord = (record: any) => {
     setSelectedRecord(record);
@@ -263,11 +249,9 @@ export default function UpdateSchedulePage() {
     return Object.entries(staffStats).map(([name, stats]) => ({ name, ...stats }));
   };
 
-  // --- SAVE UPDATES TO DATABASE ---
   const handleUpdateSave = async () => {
     if (!window.confirm("Save adjustments to the database?")) return;
     
-    // Create the updated record payload
     const updatedRecord = {
       ...selectedRecord,
       selections: updatedSelections,
@@ -285,8 +269,6 @@ export default function UpdateSchedulePage() {
       if (!response.ok) throw new Error("Failed to save");
 
       alert("Adjustments Saved Successfully! 💾");
-      
-      // Update local state so UI refreshes without needing a full page reload
       setHistory(prev => prev.map(h => h.id === updatedRecord.id ? updatedRecord : h));
       setSelectedRecord(null);
       
@@ -302,6 +284,8 @@ export default function UpdateSchedulePage() {
     const namesUsedInOriginal = Object.values(selectedRecord.originalSelections || {}).filter(Boolean) as string[];
     const namesUsedInUpdates = Object.values(updatedSelections || {}).filter(Boolean) as string[];
     const globalUsedNames = Array.from(new Set([...namesUsedInOriginal, ...namesUsedInUpdates]));
+    const originalData = selectedRecord.originalSelections || selectedRecord.selections || {};
+    const originalNotes = selectedRecord.notes || selectedRecord.originalNotes || {};
 
     return (
       <div className="flex h-screen bg-slate-50 text-slate-800 overflow-hidden">
@@ -309,12 +293,10 @@ export default function UpdateSchedulePage() {
         
         <main className="flex-1 h-screen flex flex-col overflow-hidden relative" style={{ zoom: 0.9 }}>
           
-          {/* DETAIL TOP BAR */}
           <div className="shrink-0 w-full mx-auto px-4 md:px-6 pt-4 md:pt-6 z-50 bg-slate-50">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center gap-6 mb-6">
               <div className="flex items-center gap-6">
                 
-                {/* HAMBURGER BUTTON TO OPEN SIDEBAR */}
                 {!sidebarOpen && (
                   <button
                     onClick={() => setSidebarOpen(true)}
@@ -370,7 +352,8 @@ export default function UpdateSchedulePage() {
                     </div>
                     
                     <div className="flex flex-col xl:flex-row gap-3 relative">
-                      {/* PLANNING SIDE */}
+
+                      {/* ===== PLANNING SIDE (read-only) ===== */}
                       <div className="flex-1 opacity-60 flex flex-col min-w-0">
                         <div className="bg-slate-500 p-1.5 text-center font-bold text-[9px] uppercase mb-1 rounded text-white tracking-widest h-8 sticky left-0 right-0 z-30">
                             Planning
@@ -380,58 +363,72 @@ export default function UpdateSchedulePage() {
                             <thead>
                               <tr className="bg-slate-700 text-white text-center h-[40px]">
                                 <th className="p-1 border border-slate-600 w-32 sticky left-0 z-20 bg-slate-700">
-                                  <div className="flex flex-col items-center">
-                                      <span>Slot</span>
-                                      <span className="text-[6px] invisible py-0.5">CLEAR</span>
-                                  </div>
+                                  <div className="flex flex-col items-center"><span>Slot</span></div>
                                 </th>
                                 <th className="p-1 border border-slate-600 w-24 bg-slate-700 border-b-2 border-b-emerald-400">
-                                  <div className="flex flex-col items-center">
-                                      <span>Manager</span>
-                                      <span className="text-[6px] invisible py-0.5">CLEAR</span>
-                                  </div>
+                                  <div className="flex flex-col items-center"><span>Manager</span></div>
                                 </th>
                                 {COLUMNS.map(c => (
                                   <th key={c.id} className={`p-1 border border-slate-600 w-24 ${c.type==='exec'?'bg-slate-800':''}`}>
-                                    <div className="flex flex-col items-center">
-                                        <span>{c.label}</span>
-                                        <span className="text-[6px] invisible py-0.5">CLEAR</span>
-                                    </div>
+                                    <div className="flex flex-col items-center"><span>{c.label}</span></div>
                                   </th>
                                 ))}
                                 <th className="p-1 border border-slate-600 w-40">
-                                  <div className="flex flex-col items-center">
-                                      <span>Notes</span>
-                                      <span className="text-[6px] invisible py-0.5">CLEAR</span>
-                                  </div>
+                                  <div className="flex flex-col items-center"><span>Notes</span></div>
                                 </th>
                               </tr>
                             </thead>
                             <tbody>
                               {slots.map((slot, slotIndex) => {
                                 const isOpenClose = isOpeningClosingSlot(slot, selectedRecord.branch);
+                                // --- KEY FIX: per-slot manager logic for Planning side ---
+                                const showManagerPlanning = isManagerOnDutySlot(slot, selectedRecord.branch, day);
+                                const planningManagerName =
+                                  originalData[`${day}-${slot}-MANAGER`] ||     // new format
+                                  originalNotes[`${day}-MANAGER`] ||             // legacy format
+                                  "";
+
                                 return (
-                                <tr key={slot} className={`h-[32px] ${isOpenClose ? 'bg-blue-50' : ''}`}>
-                                  <td className={`p-1 border font-bold sticky left-0 z-10 h-[32px] ${isOpenClose ? 'bg-blue-100' : 'bg-slate-50'}`}>{slot}</td>
-                                  {slotIndex === 0 && (
-                                    <td rowSpan={slots.length} className="p-1 border bg-emerald-50 text-center font-bold align-middle">
-                                      {(selectedRecord.notes || selectedRecord.originalNotes || {})[`${day}-MANAGER`] || "-"}
-                                    </td>
-                                  )}
-                                  {isOpenClose ? (
-                                    <td colSpan={COLUMNS.length + 1} className="p-1 border text-center">
-                                      <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
-                                    </td>
-                                  ) : (
-                                    <>
-                                      {COLUMNS.map(col => {
-                                        const name = (selectedRecord.originalSelections || selectedRecord.selections)[`${day}-${slot}-${col.id}`];
-                                        return <td key={col.id} className={`p-1 border text-center font-bold h-[32px] ${name ? getEmployeeColor(name) : 'bg-white'}`}>{name || "-"}</td>;
-                                      })}
-                                      <td className="p-1 border bg-white italic text-slate-400 h-[32px]">...</td>
-                                    </>
-                                  )}
-                                </tr>
+                                  <tr key={slot} className={`h-[32px] ${isOpenClose ? 'bg-blue-50' : ''}`}>
+                                    <td className={`p-1 border font-bold sticky left-0 z-10 h-[32px] ${isOpenClose ? 'bg-blue-100' : 'bg-slate-50'}`}>{slot}</td>
+                                    
+                                    {/* Planning Manager Cell — per slot, no rowSpan */}
+                                    {!isOpenClose && (
+                                      <td className="p-1 border bg-emerald-50 text-center font-bold align-middle h-[32px]">
+                                        {showManagerPlanning ? (
+                                          planningManagerName ? (
+                                            <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold ${planningManagerName ? '' : ''}`}>
+                                              {planningManagerName}
+                                            </span>
+                                          ) : (
+                                            <span className="text-slate-300">-</span>
+                                          )
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center">
+                                            <span className="text-[8px] text-emerald-200">—</span>
+                                          </div>
+                                        )}
+                                      </td>
+                                    )}
+
+                                    {isOpenClose ? (
+                                      <td colSpan={COLUMNS.length + (isOpenClose ? 2 : 1)} className="p-1 border text-center">
+                                        <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
+                                      </td>
+                                    ) : (
+                                      <>
+                                        {COLUMNS.map(col => {
+                                          const name = originalData[`${day}-${slot}-${col.id}`];
+                                          return (
+                                            <td key={col.id} className={`p-1 border text-center font-bold h-[32px] ${name ? getEmployeeColor(name) : 'bg-white'}`}>
+                                              {name || "-"}
+                                            </td>
+                                          );
+                                        })}
+                                        <td className="p-1 border bg-white italic text-slate-400 h-[32px]">...</td>
+                                      </>
+                                    )}
+                                  </tr>
                                 );
                               })}
                             </tbody>
@@ -439,7 +436,7 @@ export default function UpdateSchedulePage() {
                         </div>
                       </div>
 
-                      {/* ACTUAL SIDE */}
+                      {/* ===== ACTUAL SIDE (editable) ===== */}
                       <div className="flex-1 flex flex-col min-w-0">
                         <div className="bg-orange-600 p-1.5 flex justify-between items-center mb-1 rounded text-white tracking-widest h-8 sticky left-0 right-0 z-30">
                             <div className="w-fit min-w-[100px] text-[8px] font-black bg-black/10 px-2 py-1 rounded">
@@ -455,10 +452,7 @@ export default function UpdateSchedulePage() {
                             <thead>
                               <tr className="bg-[#2D3F50] text-white h-[40px]">
                                 <th className="p-1 border border-slate-900 w-32 sticky left-0 z-20 bg-[#2D3F50]">
-                                  <div className="flex flex-col items-center">
-                                      <span>Slot</span>
-                                      <span className="text-[6px] invisible py-0.5">CLEAR</span>
-                                  </div>
+                                  <div className="flex flex-col items-center"><span>Slot</span></div>
                                 </th>
                                 <th className="p-1 border border-slate-900 w-24 bg-slate-700 border-b-2 border-b-emerald-400">
                                   <div className="flex flex-col items-center gap-0.5">
@@ -494,66 +488,94 @@ export default function UpdateSchedulePage() {
                                   </th>
                                 ))}
                                 <th className="p-1 border border-slate-900 w-40">
-                                  <div className="flex flex-col items-center">
-                                      <span>Notes</span>
-                                      <span className="text-[6px] invisible py-0.5">CLEAR</span>
-                                  </div>
+                                  <div className="flex flex-col items-center"><span>Notes</span></div>
                                 </th>
                               </tr>
                             </thead>
                             <tbody>
                               {slots.map((slot, slotIndex) => {
                                 const isOpenClose = isOpeningClosingSlot(slot, selectedRecord.branch);
+                                // --- KEY FIX: per-slot manager logic for Actual side ---
+                                const showManagerActual = isManagerOnDutySlot(slot, selectedRecord.branch, day);
+                                const actualManagerVal =
+                                  updatedSelections[`${day}-${slot}-MANAGER`] ||   // new format
+                                  updatedNotes[`${day}-MANAGER`] ||                 // legacy format
+                                  "";
+
                                 return (
-                                <tr key={slot} className={`group h-[32px] ${isOpenClose ? 'bg-blue-50' : ''}`}>
-                                  <td className={`p-1 border font-bold sticky left-0 z-10 h-[32px] ${isOpenClose ? 'bg-blue-100' : 'bg-orange-50 group-hover:bg-orange-100'}`}>{slot}</td>
-                                  {slotIndex === 0 && (
-                                    <td rowSpan={slots.length} className="p-1 border bg-emerald-50 align-middle">
-                                      <select
-                                        value={updatedNotes[`${day}-MANAGER`] || ""}
-                                        onChange={(e) => setUpdatedNotes(p => ({ ...p, [`${day}-MANAGER`]: e.target.value }))}
-                                        className="w-full p-1 text-[9px] font-bold text-center border border-emerald-200 rounded bg-white appearance-none outline-none"
-                                      >
-                                        <option value="">-- Select --</option>
-                                        {(branchManagerData[managerReplacementBranch[day] || selectedRecord.branch] || []).map(e => (
-                                          <option key={e} value={e}>{e}</option>
-                                        ))}
-                                      </select>
-                                    </td>
-                                  )}
-                                  {isOpenClose ? (
-                                    <td colSpan={COLUMNS.length + 1} className="p-1 border text-center">
-                                      <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
-                                    </td>
-                                  ) : (
-                                    <>
-                                      {COLUMNS.map(col => {
-                                        const val = updatedSelections[`${day}-${slot}-${col.id}`] || "";
-                                        const replacementBranch = columnReplacementBranch[`${day}-${col.id}`];
-                                        const colStaffList = replacementBranch
-                                          ? (branchStaffData[replacementBranch] || [])
-                                          : activeStaffList;
-                                        const namesUsedInOtherColumns = new Set(
-                                          COLUMNS.filter(c => c.id !== col.id)
-                                            .flatMap(c => slots.map(s => updatedSelections[`${day}-${s}-${c.id}`]))
-                                            .filter(Boolean)
-                                        );
-                                        return (
-                                          <td key={col.id} className={`p-0 border h-[32px] ${col.type==='exec' ? 'bg-slate-50' : 'bg-white'}`}>
-                                            <select value={val} onChange={(e) => handleActualNameSelect(day, slot, col.id, e.target.value)}
-                                              className={`w-full h-full p-1 outline-none font-bold text-center appearance-none block ${val ? getEmployeeColor(val) : 'bg-transparent text-slate-300'}`}>
-                                              <option value="">-</option>
-                                              {colStaffList.map(e => <option key={e} value={e} disabled={namesUsedInOtherColumns.has(e)} className="text-black">{e}</option>)}
-                                            </select>
-                                          </td>
-                                        );
-                                      })}
-                                      <td className="p-0 border bg-white h-[32px]">
-                                        <textarea value={updatedNotes[`${day}-${slot}-notes`] || ""} onChange={(e) => setUpdatedNotes(p => ({...p, [`${day}-${slot}-notes`]: e.target.value}))} className="w-full h-full p-1 text-[8px] resize-none outline-none italic text-slate-600 block" />
+                                  <tr key={slot} className={`group h-[32px] ${isOpenClose ? 'bg-blue-50' : ''}`}>
+                                    <td className={`p-1 border font-bold sticky left-0 z-10 h-[32px] ${isOpenClose ? 'bg-blue-100' : 'bg-orange-50 group-hover:bg-orange-100'}`}>{slot}</td>
+
+                                    {/* Actual Manager Cell — per slot, no rowSpan */}
+                                    {!isOpenClose && (
+                                      <td className="p-1 border bg-emerald-50 align-middle h-[32px]">
+                                        {showManagerActual ? (
+                                          // Show editable dropdown for manager slots
+                                          <select
+                                            value={actualManagerVal}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setUpdatedSelections(prev => {
+                                                const next = { ...prev };
+                                                if (val) {
+                                                  next[`${day}-${slot}-MANAGER`] = val;
+                                                } else {
+                                                  delete next[`${day}-${slot}-MANAGER`];
+                                                }
+                                                return next;
+                                              });
+                                            }}
+                                            className="w-full h-full p-1 text-[9px] font-bold text-center border border-emerald-200 rounded bg-white appearance-none outline-none"
+                                          >
+                                            <option value="">-- Select --</option>
+                                            {(branchManagerData[managerReplacementBranch[day] || selectedRecord.branch] || []).map(e => (
+                                              <option key={e} value={e}>{e}</option>
+                                            ))}
+                                          </select>
+                                        ) : (
+                                          // Empty placeholder for slots after manager's shift
+                                          <div className="w-full h-full flex items-center justify-center">
+                                            <span className="text-[8px] text-emerald-200">—</span>
+                                          </div>
+                                        )}
                                       </td>
-                                    </>
-                                  )}
-                                </tr>
+                                    )}
+
+                                    {isOpenClose ? (
+                                      <td colSpan={COLUMNS.length + 1} className="p-1 border text-center">
+                                        <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
+                                      </td>
+                                    ) : (
+                                      <>
+                                        {COLUMNS.map(col => {
+                                          const val = updatedSelections[`${day}-${slot}-${col.id}`] || "";
+                                          const replacementBranch = columnReplacementBranch[`${day}-${col.id}`];
+                                          const colStaffList = replacementBranch
+                                            ? (branchStaffData[replacementBranch] || [])
+                                            : activeStaffList;
+                                          const namesUsedInOtherColumns = new Set(
+                                            COLUMNS.filter(c => c.id !== col.id)
+                                              .flatMap(c => slots.map(s => updatedSelections[`${day}-${s}-${c.id}`]))
+                                              .filter(Boolean)
+                                          );
+                                          return (
+                                            <td key={col.id} className={`p-0 border h-[32px] ${col.type==='exec' ? 'bg-slate-50' : 'bg-white'}`}>
+                                              <select value={val} onChange={(e) => handleActualNameSelect(day, slot, col.id, e.target.value)}
+                                                className={`w-full h-full p-1 outline-none font-bold text-center appearance-none block ${val ? getEmployeeColor(val) : 'bg-transparent text-slate-300'}`}>
+                                                <option value="">-</option>
+                                                {colStaffList.map(e => (
+                                                  <option key={e} value={e} disabled={namesUsedInOtherColumns.has(e)} className="text-black">{e}</option>
+                                                ))}
+                                              </select>
+                                            </td>
+                                          );
+                                        })}
+                                        <td className="p-0 border bg-white h-[32px]">
+                                          <textarea value={updatedNotes[`${day}-${slot}-notes`] || ""} onChange={(e) => setUpdatedNotes(p => ({...p, [`${day}-${slot}-notes`]: e.target.value}))} className="w-full h-full p-1 text-[8px] resize-none outline-none italic text-slate-600 block" />
+                                        </td>
+                                      </>
+                                    )}
+                                  </tr>
                                 );
                               })}
                             </tbody>
@@ -589,7 +611,6 @@ export default function UpdateSchedulePage() {
             
             <div className="shrink-0 w-full max-w-6xl mx-auto px-4 md:px-6 pt-4 md:pt-6 z-50 bg-slate-50">
               
-              {/* LIST TOP BAR */}
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-6 mb-6">
                 {!sidebarOpen && (
                   <button
@@ -616,10 +637,8 @@ export default function UpdateSchedulePage() {
                 </h1>
               </div>
 
-              {/* FILTER CONTROLS */}
               <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 mb-6 relative">
                 
-                {/* ONLY SHOW BRANCH FILTER IF NOT A BRANCH MANAGER */}
                 {userRole !== "BRANCH_MANAGER" && (
                   <div className="flex-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Filter by Branch</label>
@@ -666,7 +685,6 @@ export default function UpdateSchedulePage() {
               </div>
             </div>
 
-            {/* SCROLLING GRID AREA */}
             <div className="flex-1 overflow-y-auto w-full max-w-6xl mx-auto px-4 md:px-6 pb-12">
               {isLoading ? (
                 <div className="flex justify-center items-center h-40">
@@ -755,7 +773,6 @@ export default function UpdateSchedulePage() {
         </main>
       </div>
 
-      {/* --- CENTERED MODAL FOR CALENDAR --- */}
       {showCalendar && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white p-6 rounded-[2rem] shadow-2xl border border-slate-100 flex flex-col max-w-md w-full relative">
@@ -768,12 +785,9 @@ export default function UpdateSchedulePage() {
                   if (selection.startDate) {
                     const start = startOfWeek(selection.startDate, { weekStartsOn: 1 });
                     const end = endOfWeek(selection.startDate, { weekStartsOn: 1 });
-                    
                     setRange([{ startDate: start, endDate: end, key: "selection" }]);
                     setIsDateFiltered(true);
-                    
                     setFilterDate(format(start, "yyyy-MM-dd")); 
-                    
                     setTimeout(() => setShowCalendar(false), 250);
                   }
                 }}
