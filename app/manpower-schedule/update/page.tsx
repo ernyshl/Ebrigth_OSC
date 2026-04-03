@@ -112,6 +112,7 @@ export default function UpdateSchedulePage() {
   const [managerReplacementBranch, setManagerReplacementBranch] = useState<Record<string, string>>({});
   const [scheduledElsewhere, setScheduledElsewhere] = useState<Record<string, Record<string, Set<string>>>>({});
 
+  const [selectedDay, setSelectedDay] = useState<string>("");
   const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -195,6 +196,8 @@ export default function UpdateSchedulePage() {
     setSelectedRecord(record);
     setUpdatedSelections({ ...record.selections });
     setUpdatedNotes({ ...record.notes });
+    const days = getWorkingDaysForBranch(record.branch);
+    if (days.length > 0) setSelectedDay(days[0]);
   };
 
   const handleActualNameSelect = (day: string, targetTime: string, colId: string, name: string) => {
@@ -349,15 +352,34 @@ export default function UpdateSchedulePage() {
 
           <div className="flex-1 overflow-y-auto w-full mx-auto px-4 md:px-6 pb-20">
             <div className="space-y-6 mb-10">
-              {getWorkingDaysForBranch(selectedRecord.branch).map((day) => {
+
+              {/* DAY TAB BUTTONS */}
+              <div className="flex gap-2 flex-wrap">
+                {getWorkingDaysForBranch(selectedRecord.branch).map((day) => {
+                  const isActive = selectedDay === day;
+                  const hasData = Object.keys(updatedSelections).some(k => k.startsWith(`${day}-`));
+                  return (
+                    <button key={day} onClick={() => setSelectedDay(day)}
+                      className={`relative px-6 py-3 rounded-xl font-black uppercase text-sm tracking-wide transition-all shadow-sm ${
+                        isActive ? "bg-[#2D3F50] text-white shadow-lg scale-105"
+                        : hasData ? "bg-orange-50 text-orange-700 border-2 border-orange-300 hover:bg-orange-100"
+                        : "bg-white text-slate-500 border-2 border-slate-200 hover:bg-slate-50"
+                      }`}>
+                      {day.slice(0, 3)}
+                      {hasData && <span className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${isActive ? "bg-green-400" : "bg-orange-500"}`} />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedDay && (() => {
+                const day = selectedDay;
                 const slots = getTimeSlotsForDay(day, selectedRecord.branch);
-
                 const activeStaffList = Array.from(new Set([
-                    ...SHARED_EMPLOYEES,
-                    ...(branchStaffData[selectedRecord.branch] || []),
-                    ...globalUsedNames
+                  ...SHARED_EMPLOYEES,
+                  ...(branchStaffData[selectedRecord.branch] || []),
+                  ...globalUsedNames
                 ]));
-
                 return (
                   <div key={day} className="bg-white rounded-xl shadow-lg p-3 border-t-2 border-orange-500">
                     <div className="relative flex flex-col justify-center items-center mb-3 border-b pb-2 min-h-[30px]">
@@ -366,8 +388,7 @@ export default function UpdateSchedulePage() {
                         {getDateForDay(day, selectedRecord.startDate)}
                       </span>
                     </div>
-                    
-                    <div className="flex flex-col xl:flex-row gap-3 relative">
+                    <div className="flex flex-col gap-4">
 
                       {/* ===== PLANNING SIDE (read-only) ===== */}
                       <div className="flex-1 opacity-60 flex flex-col min-w-0">
@@ -631,7 +652,7 @@ export default function UpdateSchedulePage() {
                     </div>
                   </div>
                 );
-              })}
+              })()}
 
               <div className="mt-6 bg-white p-4 rounded-xl border border-slate-200 shadow-md">
                 <h2 className="text-sm font-black text-center uppercase tracking-widest text-slate-800 mb-4">📊 Staff Hours Comparison</h2>

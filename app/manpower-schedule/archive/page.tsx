@@ -83,6 +83,7 @@ export default function ArchiveSchedulePage() {
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
+  const [selectedDay, setSelectedDay] = useState<string>("");
   const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [branchStaffData, setBranchStaffData] = useState<Record<string, string[]>>({});
@@ -276,10 +277,31 @@ export default function ArchiveSchedulePage() {
           </div>
 
           <div className="flex-1 overflow-y-auto w-full mx-auto px-4 md:px-6 pb-20">
-            <div className="space-y-8">
-              {getWorkingDaysForBranch(selectedRecord.branch).map((day) => {
-                const slots = getTimeSlotsForDay(day, selectedRecord.branch);
+            <div className="space-y-6">
 
+              {/* DAY TAB BUTTONS */}
+              <div className="flex gap-2 flex-wrap">
+                {getWorkingDaysForBranch(selectedRecord.branch).map((day) => {
+                  const isActive = selectedDay === day;
+                  const validData = selectedRecord.selections || {};
+                  const hasData = Object.keys(validData).some(k => k.startsWith(`${day}-`));
+                  return (
+                    <button key={day} onClick={() => setSelectedDay(day)}
+                      className={`relative px-6 py-3 rounded-xl font-black uppercase text-sm tracking-wide transition-all shadow-sm ${
+                        isActive ? "bg-[#2D3F50] text-white shadow-lg scale-105"
+                        : hasData ? "bg-slate-100 text-slate-700 border-2 border-slate-400 hover:bg-slate-200"
+                        : "bg-white text-slate-400 border-2 border-slate-200 hover:bg-slate-50"
+                      }`}>
+                      {day.slice(0, 3)}
+                      {hasData && <span className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${isActive ? "bg-green-400" : "bg-slate-500"}`} />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedDay && (() => {
+                const day = selectedDay;
+                const slots = getTimeSlotsForDay(day, selectedRecord.branch);
                 return (
                   <div key={day} className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
                     <div className="bg-slate-500 p-3 border-b flex flex-col items-center justify-center">
@@ -371,7 +393,7 @@ export default function ArchiveSchedulePage() {
                     </div>
                   </div>
                 );
-              })}
+              })()}
 
               <SummaryTable data={calculateHoursForData()} />
             </div>
@@ -520,7 +542,7 @@ export default function ArchiveSchedulePage() {
                                             {cellRecs.length > 0 ? (
                                               <div className="flex flex-col gap-1">
                                                 {cellRecs.map(record => (
-                                                  <button key={record.id} onClick={() => setSelectedRecord(record)}
+                                                  <button key={record.id} onClick={() => { setSelectedRecord(record); const days = getWorkingDaysForBranch(record.branch); if (days.length > 0) setSelectedDay(days[0]); }}
                                                     className="w-full text-left px-3 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors">
                                                     <div className="font-black text-xs text-blue-800 uppercase">{record.branch}</div>
                                                     <div className="text-[10px] text-blue-500 font-bold mt-0.5">
