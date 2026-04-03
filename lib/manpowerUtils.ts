@@ -21,48 +21,41 @@ export function getWorkingDaysForBranch(branchName: string): string[] {
   return BRANCH_WORKING_DAYS[branchName] ?? [...DAYS];
 }
 
-export const EMPLOYEE_COLORS: Record<string, string> = {};
-
+// --- COLOR LOGIC ---
 const COLOR_PALETTE = [
-  "bg-red-500 text-white",
+  "bg-red-600 text-white",
   "bg-orange-500 text-white",
-  "bg-amber-500 text-white",
-  "bg-yellow-500 text-black",
-  "bg-lime-500 text-white",
-  "bg-green-500 text-white",
+  "bg-amber-500 text-black",
+  "bg-green-600 text-white",
   "bg-emerald-500 text-white",
-  "bg-teal-500 text-white",
-  "bg-cyan-500 text-white",
-  "bg-sky-500 text-white",
-  "bg-blue-500 text-white",
-  "bg-indigo-500 text-white",
-  "bg-violet-500 text-white",
-  "bg-purple-500 text-white",
-  "bg-fuchsia-500 text-white",
-  "bg-pink-500 text-white",
-  "bg-rose-500 text-white",
-  "bg-red-700 text-white",
-  "bg-blue-700 text-white",
-  "bg-green-700 text-white",
-  "bg-purple-700 text-white",
-  "bg-teal-700 text-white",
-  "bg-pink-700 text-white",
-  "bg-indigo-700 text-white",
+  "bg-teal-600 text-white",
+  "bg-cyan-600 text-white",
+  "bg-sky-600 text-white",
+  "bg-blue-600 text-white",
+  "bg-indigo-600 text-white",
+  "bg-violet-600 text-white",
+  "bg-purple-600 text-white",
+  "bg-fuchsia-600 text-white",
+  "bg-pink-600 text-white",
+  "bg-rose-600 text-white",
 ];
 
 function hashName(name: string): number {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+    // A slightly stronger hash to spread colors better
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return hash;
+  return Math.abs(hash);
 }
 
 export function getEmployeeColor(name: string): string {
-  if (!name) return "bg-slate-400 text-white";
-  return COLOR_PALETTE[hashName(name) % COLOR_PALETTE.length];
+  if (!name || name === "None" || name === "-- Select --") return "bg-white text-slate-400 border border-slate-200";
+  const colorIndex = hashName(name) % COLOR_PALETTE.length;
+  return COLOR_PALETTE[colorIndex];
 }
 
+// --- TABLE CONFIGURATION ---
 export const COLUMNS = [
   { id: "coach1", label: "Coach 1", type: "coach" as const },
   { id: "coach2", label: "Coach 2", type: "coach" as const },
@@ -90,7 +83,6 @@ export const BRANCH_SLOTS_CONFIG: Record<string, { weekday: readonly string[], w
   "default": { weekday: DEFAULT_WEEKDAY_TIME_SLOTS, weekend: DEFAULT_WEEKEND_TIME_SLOTS }
 };
 
-// Slots that are fixed "all-staff" opening/closing slots — excluded from hours summary
 const OPENING_CLOSING_SLOTS: Record<string, string[]> = {
   "Ampang": ["5:00 PM - 6:00 PM", "9:45 PM - 10:00 PM", "8:45 AM - 9:15 AM", "6:45 PM - 7:15 PM"],
   "Bandar Seri Putra": ["5:00 PM - 6:00 PM", "9:45 PM - 10:00 PM", "8:45 AM - 9:15 AM", "6:45 PM - 7:15 PM"],
@@ -111,11 +103,7 @@ export function isAdminSlot(slot: string, branchName: string) {
   return ["5:00 PM", "10:00 PM", "08:45 AM – 09:15 AM", "11:45 AM – 12:00 PM", "2:30 PM – 2:45 PM", "5:15 PM – 5:30 PM", "6:45 PM – 7:15 PM"].includes(slot);
 }
 
-// --- MANAGER ON DUTY SLOT LOGIC ---
-// Defines which slots the Manager on Duty dropdown should appear for, per branch.
-// Manager only works up to 08:30PM on weekdays, and up to a certain slot on weekends.
 const MANAGER_ON_DUTY_SLOTS: Record<string, { weekday: string[], weekend: string[] }> = {
-  // Ampang / Bandar Seri Putra / Klang layout: 3 active weekday slots, manager covers first 2
   "Ampang": {
     weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM"],
     weekend: ["09:15 AM – 10:30 AM", "10:30 AM – 11:45 AM", "12:00 PM – 1:15 PM", "1:15 PM – 2:30 PM", "2:45 PM – 4:00 PM", "4:00 PM – 5:15 PM", "5:30 PM – 6:45 PM"],
@@ -128,23 +116,16 @@ const MANAGER_ON_DUTY_SLOTS: Record<string, { weekday: string[], weekend: string
     weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM"],
     weekend: ["09:15 AM – 10:30 AM", "10:30 AM – 11:45 AM", "12:00 PM – 1:15 PM", "1:15 PM – 2:30 PM", "2:45 PM – 4:00 PM", "4:00 PM – 5:15 PM", "5:30 PM – 6:45 PM"],
   },
-  // Subang Taipan: manager covers first 2 active slots (excluding admin slots)
   "Subang Taipan": {
     weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM"],
     weekend: ["09:15 AM – 10:30 AM", "10:30 AM – 11:45 AM", "12:00 PM – 1:15 PM", "1:15 PM – 2:30 PM", "2:45 PM – 4:00 PM", "4:00 PM – 5:15 PM", "5:30 PM – 6:45 PM"],
   },
-  // Default (all other branches): weekday has 3 slots, manager covers first 2
   "default": {
     weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM"],
     weekend: ["09:15 AM – 10:30 AM", "10:30 AM – 11:45 AM", "12:00 PM – 1:15 PM", "1:15 PM – 2:30 PM", "2:45 PM – 4:00 PM", "4:00 PM – 5:15 PM", "5:30 PM – 6:45 PM"],
   },
 };
 
-/**
- * Returns true if the Manager on Duty should show a dropdown for this slot.
- * Manager only works up to 08:30PM on weekdays (first 2 slots),
- * and covers all active slots on weekends.
- */
 export function isManagerOnDutySlot(slot: string, branchName: string, day: string): boolean {
   const isWeekend = !WEEKDAY_DAYS.includes(day as any);
   const config = MANAGER_ON_DUTY_SLOTS[branchName] || MANAGER_ON_DUTY_SLOTS["default"];

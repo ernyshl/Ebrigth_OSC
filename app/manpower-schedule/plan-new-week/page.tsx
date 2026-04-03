@@ -689,7 +689,7 @@ function PlanNewWeekPage() {
               {!isLocked && (
                 <div className="mt-16 text-center pb-10">
                    <button onClick={handleFinalSubmit} className="bg-green-600 hover:bg-green-700 text-white px-20 py-5 rounded-2xl text-xl font-black shadow-xl uppercase tracking-widest transition-transform hover:scale-105">
-                      🚀 Final Submit & Archive
+                     🚀 Final Submit & Archive
                    </button>
                 </div>
               )}
