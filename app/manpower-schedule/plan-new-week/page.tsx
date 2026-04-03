@@ -278,6 +278,14 @@ function PlanNewWeekPage() {
         const daySlots = getTimeSlotsForDay(day, selectedBranch);
         daySlots.forEach((slot) => {
           if (!isOpeningClosingSlot(slot, selectedBranch)) {
+            if (columnId === "MANAGER") {
+              // Skip slot if name is already in any coach/exec column for this slot
+              const usedAsStaff = COLUMNS.some(c => next[`${day}-${slot}-${c.id}`] === name);
+              if (usedAsStaff) return;
+            } else {
+              // Skip slot if name is already the manager for this slot
+              if (next[`${day}-${slot}-MANAGER`] === name) return;
+            }
             next[`${day}-${slot}-${columnId}`] = name;
           }
         });
@@ -664,9 +672,11 @@ function PlanNewWeekPage() {
                                           ? Object.entries(scheduledElsewhere).find(([, dayMap]) => dayMap[day]?.has(e))?.[0]
                                           : undefined;
                                         const isConflict = !!conflictBranch;
+                                        const isAssignedAsStaff = COLUMNS.some(c => selections[`${day}-${slot}-${c.id}`] === e);
+                                        const isDisabled = isConflict || isAssignedAsStaff;
                                         return (
-                                          <option key={e} value={e} disabled={isConflict}>
-                                            {isConflict ? `${e} (at ${conflictBranch})` : e}
+                                          <option key={e} value={e} disabled={isDisabled}>
+                                            {isConflict ? `${e} (at ${conflictBranch})` : isAssignedAsStaff ? `${e} (assigned as staff)` : e}
                                           </option>
                                         );
                                       })}
