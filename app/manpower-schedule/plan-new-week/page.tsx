@@ -104,6 +104,7 @@ function PlanNewWeekPage() {
   // --- ADD EMPLOYEE MODAL ---
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
   const [newEmployeeName, setNewEmployeeName] = useState("");
+  const [newEmployeePosition, setNewEmployeePosition] = useState("Part Time");
   const [addEmployeeError, setAddEmployeeError] = useState("");
   const [isAddingEmployee, setIsAddingEmployee] = useState(false);
 
@@ -388,12 +389,13 @@ function PlanNewWeekPage() {
       const res = await fetch('/api/branch-staff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newEmployeeName.trim(), branch: selectedBranch }),
+        body: JSON.stringify({ name: newEmployeeName.trim(), branch: selectedBranch, position: newEmployeePosition }),
       });
       const data = await res.json();
       if (!res.ok) { setAddEmployeeError(data.error || "Failed to add employee."); return; }
       await fetchStaff();
       setNewEmployeeName("");
+      setNewEmployeePosition("Part Time");
       setShowAddEmployeeModal(false);
     } catch {
       setAddEmployeeError("Something went wrong. Please try again.");
@@ -452,7 +454,7 @@ function PlanNewWeekPage() {
             <div className="flex items-center gap-3">
               {hasConfirmedBranch && hasConfirmedWeek && !isLocked && (
                 <button
-                  onClick={() => { setShowAddEmployeeModal(true); setNewEmployeeName(""); setAddEmployeeError(""); }}
+                  onClick={() => { setShowAddEmployeeModal(true); setNewEmployeeName(""); setNewEmployeePosition("Part Time"); setAddEmployeeError(""); }}
                   className="bg-green-600 text-white px-5 py-3 rounded-xl font-black uppercase text-sm tracking-wide hover:bg-green-700 transition-colors shadow-sm flex items-center gap-2"
                 >
                   + Add Employee
@@ -771,6 +773,23 @@ function PlanNewWeekPage() {
               />
               {addEmployeeError && (
                 <p className="text-xs text-red-500 font-bold">{addEmployeeError}</p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-black uppercase text-slate-500">Role</label>
+              <select
+                value={newEmployeePosition}
+                onChange={(e) => setNewEmployeePosition(e.target.value)}
+                className="w-full p-3 border-2 border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-green-500 transition-colors"
+              >
+                <option value="Part Time">Part Time</option>
+                <option value="Full Time">Full Time</option>
+                <option value="Branch Manager">Branch Manager</option>
+              </select>
+              {newEmployeePosition === "Branch Manager" && (
+                <p className="text-[10px] text-emerald-600 font-bold bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                  This person will be set as Manager on Duty for {selectedBranch}.
+                </p>
               )}
             </div>
             <div className="flex gap-3">
