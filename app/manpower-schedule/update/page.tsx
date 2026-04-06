@@ -118,6 +118,11 @@ export default function UpdateSchedulePage() {
   const [managerReplacementBranch, setManagerReplacementBranch] = useState<Record<string, string>>({});
   const [scheduledElsewhere, setScheduledElsewhere] = useState<Record<string, Record<string, Set<string>>>>({});
 
+  const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
+  const [newEmployeeName, setNewEmployeeName] = useState("");
+  const [addEmployeeError, setAddEmployeeError] = useState("");
+  const [isAddingEmployee, setIsAddingEmployee] = useState(false);
+
   const [selectedDay, setSelectedDay] = useState<string>("");
   const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -134,6 +139,25 @@ export default function UpdateSchedulePage() {
     key: "selection",
   }]);
 
+  const fetchStaff = async () => {
+    const res = await fetch('/api/branch-staff');
+    const staffList = await res.json();
+    if (!Array.isArray(staffList)) return;
+    const grouped: Record<string, string[]> = {};
+    const managers: Record<string, string[]> = {};
+    staffList.forEach((s: any) => {
+      if (!s.branch) return;
+      if (!grouped[s.branch]) grouped[s.branch] = [];
+      grouped[s.branch].push(s.name);
+      if (s.role && s.role.startsWith('branch_manager')) {
+        if (!managers[s.branch]) managers[s.branch] = [];
+        managers[s.branch].push(s.name);
+      }
+    });
+    setBranchStaffData(grouped);
+    setBranchManagerData(managers);
+  };
+
   useEffect(() => {
     const fetchSchedules = async () => {
       try {
@@ -145,24 +169,6 @@ export default function UpdateSchedulePage() {
       } finally {
         setIsLoading(false);
       }
-    };
-    const fetchStaff = async () => {
-      const res = await fetch('/api/branch-staff');
-      const staffList = await res.json();
-      if (!Array.isArray(staffList)) return;
-      const grouped: Record<string, string[]> = {};
-      const managers: Record<string, string[]> = {};
-      staffList.forEach((s: any) => {
-        if (!s.branch) return;
-        if (!grouped[s.branch]) grouped[s.branch] = [];
-        grouped[s.branch].push(s.name);
-        if (s.role && s.role.startsWith('branch_manager')) {
-          if (!managers[s.branch]) managers[s.branch] = [];
-          managers[s.branch].push(s.name);
-        }
-      });
-      setBranchStaffData(grouped);
-      setBranchManagerData(managers);
     };
     fetchSchedules();
     fetchStaff();
@@ -197,6 +203,29 @@ export default function UpdateSchedulePage() {
     });
     setScheduledElsewhere(map);
   }, [selectedRecord, history]);
+
+  const handleAddEmployee = async () => {
+    if (!newEmployeeName.trim()) { setAddEmployeeError("Name cannot be empty."); return; }
+    if (!selectedRecord) return;
+    setIsAddingEmployee(true);
+    setAddEmployeeError("");
+    try {
+      const res = await fetch('/api/branch-staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newEmployeeName.trim(), branch: selectedRecord.branch }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAddEmployeeError(data.error || "Failed to add employee."); return; }
+      await fetchStaff();
+      setNewEmployeeName("");
+      setShowAddEmployeeModal(false);
+    } catch {
+      setAddEmployeeError("Something went wrong. Please try again.");
+    } finally {
+      setIsAddingEmployee(false);
+    }
+  };
 
   const handleSelectRecord = (record: any) => {
     setSelectedRecord(record);
@@ -365,9 +394,17 @@ export default function UpdateSchedulePage() {
                   )}
                 </h1>
               </div>
-              <button onClick={handleUpdateSave} className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl text-sm font-black uppercase shadow-md transition-colors flex items-center gap-2">
-                <span>💾</span> Save Adjustments
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => { setShowAddEmployeeModal(true); setNewEmployeeName(""); setAddEmployeeError(""); }}
+                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-sm font-black uppercase shadow-md transition-colors flex items-center gap-2"
+                >
+                  + Add Employee
+                </button>
+                <button onClick={handleUpdateSave} className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl text-sm font-black uppercase shadow-md transition-colors flex items-center gap-2">
+                  <span>💾</span> Save Adjustments
+                </button>
+              </div>
             </div>
           </div>
 
@@ -666,6 +703,48 @@ export default function UpdateSchedulePage() {
             </div>
           </div>
         </main>
+
+        {/* ADD EMPLOYEE MODAL */}
+        {showAddEmployeeModal && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+            <div className="bg-white p-8 rounded-[2rem] shadow-2xl border border-slate-100 w-full max-w-sm flex flex-col gap-5">
+              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight text-center">Add Employee</h2>
+              <div className="text-xs text-slate-500 text-center font-bold uppercase tracking-widest bg-slate-50 border border-slate-200 rounded-xl px-4 py-2">
+                Branch: {selectedRecord.branch}
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-black uppercase text-slate-500">Full Name</label>
+                <input
+                  type="text"
+                  value={newEmployeeName}
+                  onChange={(e) => { setNewEmployeeName(e.target.value); setAddEmployeeError(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAddEmployee(); }}
+                  placeholder="e.g. Ahmad Bin Ali"
+                  className="w-full p-3 border-2 border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-green-500 transition-colors"
+                  autoFocus
+                />
+                {addEmployeeError && (
+                  <p className="text-xs text-red-500 font-bold">{addEmployeeError}</p>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowAddEmployeeModal(false)}
+                  className="flex-1 py-3 bg-slate-200 text-slate-700 font-black rounded-xl hover:bg-slate-300 uppercase tracking-widest text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddEmployee}
+                  disabled={isAddingEmployee}
+                  className="flex-1 py-3 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 disabled:bg-slate-300 uppercase tracking-widest text-sm transition-colors"
+                >
+                  {isAddingEmployee ? "Saving..." : "Add"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
