@@ -64,7 +64,7 @@ function parseCSV(text: string): Employee[] {
     .map((line) => {
       const cols = parseCSVLine(line);
       if (cols.length < 4) return null;
-      const eid = cols[10] ?? ""; // fixed index — col 10 is always the corrected EID, col 11+ may be email
+      const eid = cols[8] ?? ""; // col 8 is the EID (e.g. "0800 44 0014"), col 10 is email
       const parts = eid.trim().split(" ");
       const scannerRef = parts.length === 3 ? parts[1] + parts[0].substring(0, 2) + parts[2] : "";
       return {
@@ -372,22 +372,14 @@ export default function AttendanceSummary() {
                   </tr>
                 </thead>
                 <tbody>
-                  {scannerStatus === "idle" ? (
+                  {logs.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-4 py-16 text-center text-gray-400 text-sm">
-                        Connecting to thumbprint scanner…
-                      </td>
-                    </tr>
-                  ) : scannerStatus === "error" ? (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-16 text-center text-red-400 text-sm">
-                        Could not reach the scanner at 192.168.100.64. Check power and network.
-                      </td>
-                    </tr>
-                  ) : logs.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-16 text-center text-gray-400 text-sm">
-                        No scans recorded today yet. Waiting for first thumbprint…
+                        {scannerStatus === "idle"
+                          ? "Connecting to thumbprint scanner…"
+                          : scannerStatus === "error"
+                          ? "No data yet — scanner is currently offline."
+                          : "No scans recorded today yet. Waiting for first thumbprint…"}
                       </td>
                     </tr>
                   ) : (
@@ -474,7 +466,7 @@ export default function AttendanceSummary() {
                   </thead>
                   <tbody>
                     {missingEmployees.map((e, i) => (
-                      <tr key={e.scannerRef || e.name || i} className="border-b border-gray-100 hover:bg-red-50 transition-colors">
+                      <tr key={`${e.scannerRef || e.name}-${i}`} className="border-b border-gray-100 hover:bg-red-50 transition-colors">
                         <td className="px-4 py-3 text-sm font-semibold text-gray-800">{e.name}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{e.dept}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{e.position}</td>
@@ -507,7 +499,7 @@ export default function AttendanceSummary() {
                   {employees.map((e, i) => {
                     const matched = seenScannerIds.includes(e.scannerRef);
                     return (
-                      <tr key={e.scannerRef || e.name || i} className={`border-t border-gray-100 hover:bg-gray-50 ${matched ? "bg-green-50" : ""}`}>
+                      <tr key={`${e.scannerRef || e.name}-${i}`} className={`border-t border-gray-100 hover:bg-gray-50 ${matched ? "bg-green-50" : ""}`}>
                         <td className="px-4 py-2 text-xs font-mono text-gray-600">{e.scannerRef || <span className="text-red-400">⚠ no ID</span>}</td>
                         <td className="px-4 py-2 text-sm text-gray-800 font-medium">{e.name}</td>
                         <td className="px-4 py-2 text-sm text-gray-600">{e.dept}</td>

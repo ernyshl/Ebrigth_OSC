@@ -52,7 +52,7 @@ async function fetchEmployees(): Promise<CSVEmployee[]> {
   return text.trim().split("\n").slice(2).map(line => {
     const cols = parseCSVLine(line);
     if (cols.length < 4) return null;
-    const eid = (cols[10] ?? "").trim();
+    const eid = (cols[8] ?? "").trim();
     const parts = eid.split(" ");
     const scannerRef = parts.length === 3 ? parts[1] + parts[0].substring(0, 2) + parts[2] : "";
     return {
