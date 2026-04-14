@@ -85,6 +85,52 @@ model BranchStaff {
   @@map("BranchStaff")
 }
 
+model LeaveTransaction {
+  id                Int       @id @default(autoincrement())
+  EmployeeCode      String
+  LeaveTypeCode     String
+  LeaveTransId      String?
+  ApplyDate         DateTime?
+  ApplyReason       String?
+  ApplyStatus       String?
+  Attachment        String?
+  DayNo             Decimal?
+  HourNo            Decimal?
+  Days              String?
+  Source             String?
+  LeaveAdjustmentId String?
+  LeaveDate         DateTime? @db.Date
+  FromTime          DateTime? @db.Time()
+  ToTime            DateTime? @db.Time()
+  IsHourly          Boolean?
+  IsAdjustment      Boolean?
+  LeaveCreditId     String?
+  created_at        DateTime? @default(now())
+  ActionRemark      String?
+  RequiredThirdParty Boolean?
+  WorkingHours      Int?
+
+  @@unique([LeaveTransId, LeaveDate], map: "unique_leave_trans")
+}
+
+model MedicalLeave {
+  id            Int       @id @default(autoincrement())
+  employeeCode  String
+  name          String?
+  position      String?
+  dept          String?
+  branch        String?
+  leaveDate     DateTime  @db.Date
+  reason        String?
+  status        String?
+  days          String?
+  leaveTransId  String?   @unique
+  attachment    String?
+  createdAt     DateTime  @default(now())
+
+  @@map("MedicalLeave")
+}
+
 // Daily attendance log — one row per employee per day.
 // Email flags ensure clock-in/out emails fire exactly once regardless of
 // how many times the scanner route is polled.
