@@ -71,8 +71,8 @@ interface ApiResponse {
 const getAvailableMonths = () => {
   const months: { value: string; label: string }[] = [];
   const now = new Date();
-  for (let i = 0; i < 6; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+  const startMonth = new Date(2026, 3, 1); // April 2026 — first month with clean schedule data
+  for (let d = new Date(now.getFullYear(), now.getMonth(), 1); d >= startMonth; d.setMonth(d.getMonth() - 1)) {
     const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const label = d.toLocaleString("en-US", { month: "long", year: "numeric" });
     months.push({ value, label });
