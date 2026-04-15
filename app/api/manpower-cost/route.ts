@@ -140,25 +140,30 @@ export async function GET(request: Request) {
 
     // Build Employee lookup by name+branch (position and CoachRate from Employee table)
     // Also build a name normalization map so all name variants merge into the Employee.name
-    const employeeLookup: Record<string, { position: string | null; CoachRate: number | null }> = {};
+    // All keys are lowercased to avoid case-sensitive mismatches
+    const employeeLookup: Record<string, { position: string | null; CoachRate: number | null; displayName: string; displayBranch: string }> = {};
     const nameNormalize: Record<string, string> = {};
     allEmployees.forEach((e) => {
       if (e.name && e.branch) {
-        const key = `${e.name}:::${e.branch}`;
+        const key = `${e.name.toLowerCase()}:::${e.branch.toLowerCase()}`;
         employeeLookup[key] = {
           position: e.position,
           CoachRate: e.CoachRate ? Number(e.CoachRate) : null,
+          displayName: e.name,
+          displayBranch: e.branch,
         };
         nameNormalize[key] = key;
       }
       if (e.nickname && e.branch && e.nickname !== e.name) {
-        const nickKey = `${e.nickname}:::${e.branch}`;
+        const nickKey = `${e.nickname.toLowerCase()}:::${e.branch.toLowerCase()}`;
         employeeLookup[nickKey] = {
           position: e.position,
           CoachRate: e.CoachRate ? Number(e.CoachRate) : null,
+          displayName: e.name || e.nickname,
+          displayBranch: e.branch,
         };
         if (e.name) {
-          nameNormalize[nickKey] = `${e.name}:::${e.branch}`;
+          nameNormalize[nickKey] = `${e.name.toLowerCase()}:::${e.branch.toLowerCase()}`;
         }
       }
     });
@@ -173,29 +178,47 @@ export async function GET(request: Request) {
           (e) => e.name?.toLowerCase() === bsNickLower || e.nickname?.toLowerCase() === bsNickLower
         );
         if (emp?.name && emp.branch) {
-          // Map the full name (with Employee's branch) to the canonical Employee.name key
-          const fullKey = `${bs.name}:::${emp.branch}`;
+          const fullKey = `${bs.name.toLowerCase()}:::${emp.branch.toLowerCase()}`;
           if (!nameNormalize[fullKey]) {
-            nameNormalize[fullKey] = `${emp.name}:::${emp.branch}`;
+            nameNormalize[fullKey] = `${emp.name.toLowerCase()}:::${emp.branch.toLowerCase()}`;
           }
+        }
+      }
+    });
+
+    // Also build a name-only lookup (ignoring branch) as a fallback
+    const nameOnlyLookup: Record<string, { position: string | null; CoachRate: number | null }> = {};
+    allEmployees.forEach((e) => {
+      if (e.name) {
+        const nk = e.name.toLowerCase();
+        if (!nameOnlyLookup[nk]) {
+          nameOnlyLookup[nk] = {
+            position: e.position,
+            CoachRate: e.CoachRate ? Number(e.CoachRate) : null,
+          };
         }
       }
     });
 
     // Resolve a name+branch to its canonical (Employee.name) key
     const canonicalKey = (name: string, branch: string): string => {
-      const key = `${name}:::${branch}`;
+      const key = `${name.toLowerCase()}:::${branch.toLowerCase()}`;
       return nameNormalize[key] || key;
     };
 
-    // Helper to find info for a given name+branch
+    // Helper to find info for a given name+branch, with fallback to name-only match
     const findStaffInfo = (name: string, branch: string) => {
-      const key = `${name}:::${branch}`;
+      const key = `${name.toLowerCase()}:::${branch.toLowerCase()}`;
       const emp = employeeLookup[key];
-      return {
-        position: emp?.position || null,
-        rate: emp?.CoachRate || null,
-      };
+      if (emp) {
+        return { position: emp.position || null, rate: emp.CoachRate || null };
+      }
+      // Fallback: match by name only (ignore branch)
+      const nameOnly = nameOnlyLookup[name.toLowerCase()];
+      if (nameOnly) {
+        return { position: nameOnly.position || null, rate: nameOnly.CoachRate || null };
+      }
+      return { position: null, rate: null };
     };
 
     // Helper: map day name to actual date within a schedule week
@@ -278,10 +301,12 @@ export async function GET(request: Request) {
 
     allEntries.forEach((entry) => {
       const key = canonicalKey(entry.name, entry.branch);
-      const displayName = key.split(":::")[0];
-      const canonicalBranch = key.split(":::")[1];
+      // Look up display name from employee lookup (preserves original casing)
+      const empRecord = employeeLookup[key];
+      const displayName = empRecord?.displayName || entry.name;
+      const displayBranch = empRecord?.displayBranch || entry.branch;
       // Look up staff info by canonical name (Employee.name), fall back to raw name from selections
-      const canonical = findStaffInfo(displayName, canonicalBranch);
+      const canonical = findStaffInfo(displayName, displayBranch);
       const raw = findStaffInfo(entry.name, entry.branch);
       const staffInfo = {
         position: canonical.position || raw.position,
@@ -294,7 +319,7 @@ export async function GET(request: Request) {
 
         aggregated[key] = {
           name: displayName,
-          branch: entry.branch,
+          branch: displayBranch,
           rate,
           employmentType: position,
           position,
