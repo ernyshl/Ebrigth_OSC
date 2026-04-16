@@ -1,9 +1,9 @@
 /**
  * lib/scanner-sync.ts
  *
- * Core sync logic: polls the Hikvision scanner, then writes new
- * AttendanceLog records to the database for any employee whose
- * clock-in hasn't been recorded yet today.
+ * Core sync logic: polls every configured Hikvision scanner, then writes
+ * AttendanceLog records to the database. Each scanner has its own IP and
+ * branch location — scans are tagged with scannerLocation on creation.
  *
  * Called from instrumentation.ts on a setInterval.
  */
@@ -11,6 +11,7 @@
 import { request } from 'urllib';
 import { prisma } from '@/lib/prisma';
 import { sendClockInEmail, sendClockOutEmail } from '@/lib/mailer';
+import { SCANNERS, ScannerConfig } from '@/lib/scanners';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,16 +59,14 @@ function todayKL(): string {
 // ─── Scanner fetch ────────────────────────────────────────────────────────────
 
 /**
- * Fetch all scan events for today from the Hikvision scanner.
+ * Fetch all scan events for today from a single Hikvision scanner.
  * Paginates automatically until no more results are returned.
  */
-async function fetchTodayEvents(): Promise<ScanEvent[]> {
-  const ip   = process.env.SCANNER_IP;
-  const user = process.env.SCANNER_USER;
-  const pass = process.env.SCANNER_PASS;
+async function fetchTodayEvents(scanner: ScannerConfig): Promise<ScanEvent[]> {
+  const { id, ip, user, pass } = scanner;
 
   if (!ip || !user || !pass) {
-    console.error('[scanner-sync] Missing SCANNER_IP / SCANNER_USER / SCANNER_PASS — aborting sync');
+    console.error(`[scanner-sync][${id}] Missing ip/user/pass — check SCANNER_${id.toUpperCase().replace('-', '_')}_* env vars`);
     return [];
   }
 
@@ -108,12 +107,11 @@ async function fetchTodayEvents(): Promise<ScanEvent[]> {
       });
 
       if (res.statusCode === 401) {
-        console.error('[scanner-sync] ✗ 401 Unauthorized');
-        console.error('[scanner-sync]   Verify SCANNER_USER / SCANNER_PASS match the device web UI.');
+        console.error(`[scanner-sync][${id}] ✗ 401 Unauthorized — verify credentials`);
         break;
       }
       if (res.statusCode !== 200) {
-        console.error(`[scanner-sync] ✗ Unexpected HTTP ${res.statusCode}`);
+        console.error(`[scanner-sync][${id}] ✗ Unexpected HTTP ${res.statusCode}`);
         break;
       }
 
@@ -126,11 +124,11 @@ async function fetchTodayEvents(): Promise<ScanEvent[]> {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const hint = msg.includes('ECONNREFUSED')
-        ? '— scanner unreachable, check SCANNER_IP and network'
+        ? '— scanner unreachable, check ip and network'
         : msg.includes('ETIMEDOUT')
         ? '— connection timed out, device may be off'
         : '';
-      console.error(`[scanner-sync] ✗ Network error ${hint}:`, msg);
+      console.error(`[scanner-sync][${id}] ✗ Network error ${hint}:`, msg);
       break;
     }
   }
@@ -138,10 +136,14 @@ async function fetchTodayEvents(): Promise<ScanEvent[]> {
   return all;
 }
 
-// ─── Main sync function ───────────────────────────────────────────────────────
+// ─── Per-scanner processing ───────────────────────────────────────────────────
 
-export async function syncScannerToDb(): Promise<void> {
-  const allEvents = await fetchTodayEvents();
+async function processScannerEvents(
+  scanner: ScannerConfig,
+  staffByEmpNo: Map<string | null, { name: string | null; email: string | null }>,
+  today: string,
+): Promise<void> {
+  const allEvents = await fetchTodayEvents(scanner);
 
   // Drop placeholder / anonymous scans
   const valid = allEvents.filter(
@@ -161,14 +163,6 @@ export async function syncScannerToDb(): Promise<void> {
       serialNo: String(ev.serialNo),
     });
   }
-
-  const today = todayKL();
-
-  // I1: Batch-load all BranchStaff once per sync cycle instead of one query per employee
-  const allStaff = await prisma.branchStaff.findMany({
-    select: { employeeId: true, name: true, email: true },
-  });
-  const staffByEmpNo = new Map(allStaff.map(s => [s.employeeId, s]));
 
   for (const [empNo, scans] of groups) {
     // ── Resolve name + email from BranchStaff ─────────────────────────────
@@ -201,9 +195,10 @@ export async function syncScannerToDb(): Promise<void> {
           clockOutTime,
           clockOutSerialNo:  null,
           clockOutEmailSent: false,
+          scannerLocation:   scanner.location,
         },
       });
-      console.log(`[scanner-sync] ✅ Created — ${empName}  in: ${clockInTime}`);
+      console.log(`[scanner-sync][${scanner.id}] ✅ Created — ${empName}  in: ${clockInTime}  loc: ${scanner.location}`);
 
       // Send clock-in notification
       if (empEmail) {
@@ -214,36 +209,31 @@ export async function syncScannerToDb(): Promise<void> {
             data:  { clockInEmailSent: true },
           });
         } catch (e) {
-          console.error(`[scanner-sync] Clock-in email failed (${empName}):`, (e as Error).message);
+          console.error(`[scanner-sync][${scanner.id}] Clock-in email failed (${empName}):`, (e as Error).message);
         }
       } else {
-        // C1: log clearly so missing emails are visible in the terminal
-        console.warn(`[scanner-sync] ⚠ No email for ${empName} (empNo: ${empNo}) — clock-in email skipped. Add email to BranchStaff.`);
+        console.warn(`[scanner-sync][${scanner.id}] ⚠ No email for ${empName} (empNo: ${empNo}) — clock-in email skipped. Add email to BranchStaff.`);
       }
 
       // If the same fetch batch already contains a later scan, handle clock-out now
       if (hasClockOut && clockOutTime) {
         if (empEmail) {
           try {
-            // C2: DB update is now INSIDE the try block — only marks as sent if email succeeded
             await sendClockOutEmail(empEmail, empName, clockOutTime);
-            console.log(`[scanner-sync] 🔴 Same-batch out — ${empName}  out: ${clockOutTime}`);
+            console.log(`[scanner-sync][${scanner.id}] 🔴 Same-batch out — ${empName}  out: ${clockOutTime}`);
             await prisma.attendanceLog.update({
               where: { date_empNo: { date: today, empNo } },
               data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: true },
             });
           } catch (e) {
-            console.error(`[scanner-sync] Clock-out email failed (${empName}):`, (e as Error).message);
-            // Still update clockOutTime so the UI shows the correct time,
-            // but leave clockOutEmailSent: false so next cycle retries the email
+            console.error(`[scanner-sync][${scanner.id}] Clock-out email failed (${empName}):`, (e as Error).message);
             await prisma.attendanceLog.update({
               where: { date_empNo: { date: today, empNo } },
               data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: false },
             });
           }
         } else {
-          // C1: log missing email for clock-out too
-          console.warn(`[scanner-sync] ⚠ No email for ${empName} (empNo: ${empNo}) — clock-out email skipped.`);
+          console.warn(`[scanner-sync][${scanner.id}] ⚠ No email for ${empName} (empNo: ${empNo}) — clock-out email skipped.`);
           await prisma.attendanceLog.update({
             where: { date_empNo: { date: today, empNo } },
             data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: false },
@@ -263,7 +253,7 @@ export async function syncScannerToDb(): Promise<void> {
             data:  { clockInEmailSent: true },
           });
         } catch (e) {
-          console.error(`[scanner-sync] Clock-in email retry failed (${empName}):`, (e as Error).message);
+          console.error(`[scanner-sync][${scanner.id}] Clock-in email retry failed (${empName}):`, (e as Error).message);
         }
       }
 
@@ -271,25 +261,21 @@ export async function syncScannerToDb(): Promise<void> {
       if (hasClockOut && last.serialNo !== existing.clockOutSerialNo && clockOutTime) {
         if (empEmail) {
           try {
-            // C2: DB update is now INSIDE the try block — only marks as sent if email succeeded
             await sendClockOutEmail(empEmail, empName, clockOutTime);
-            console.log(`[scanner-sync] 🔴 Updated out — ${empName}  out: ${clockOutTime}`);
+            console.log(`[scanner-sync][${scanner.id}] 🔴 Updated out — ${empName}  out: ${clockOutTime}`);
             await prisma.attendanceLog.update({
               where: { date_empNo: { date: today, empNo } },
               data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: true },
             });
           } catch (e) {
-            console.error(`[scanner-sync] Clock-out email failed (${empName}):`, (e as Error).message);
-            // Still update clockOutTime so the UI is correct,
-            // but leave clockOutEmailSent: false so next cycle retries
+            console.error(`[scanner-sync][${scanner.id}] Clock-out email failed (${empName}):`, (e as Error).message);
             await prisma.attendanceLog.update({
               where: { date_empNo: { date: today, empNo } },
               data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: false },
             });
           }
         } else {
-          // C1: log missing email for existing-record clock-out
-          console.warn(`[scanner-sync] ⚠ No email for ${empName} (empNo: ${empNo}) — clock-out email skipped.`);
+          console.warn(`[scanner-sync][${scanner.id}] ⚠ No email for ${empName} (empNo: ${empNo}) — clock-out email skipped.`);
           await prisma.attendanceLog.update({
             where: { date_empNo: { date: today, empNo } },
             data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: false },
@@ -298,4 +284,21 @@ export async function syncScannerToDb(): Promise<void> {
       }
     }
   }
+}
+
+// ─── Main sync function ───────────────────────────────────────────────────────
+
+export async function syncScannerToDb(): Promise<void> {
+  const today = todayKL();
+
+  // I1: Batch-load all BranchStaff once per sync cycle — shared across all scanners
+  const allStaff = await prisma.branchStaff.findMany({
+    select: { employeeId: true, name: true, email: true },
+  });
+  const staffByEmpNo = new Map(allStaff.map(s => [s.employeeId, s]));
+
+  // Process each configured scanner in parallel
+  await Promise.all(
+    SCANNERS.map(scanner => processScannerEvents(scanner, staffByEmpNo, today))
+  );
 }

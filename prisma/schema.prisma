@@ -96,6 +96,7 @@ model AttendanceLog {
   clockOutTime      String?
   clockOutSerialNo  String?
   clockOutEmailSent Boolean  @default(false)
+  scannerLocation   String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

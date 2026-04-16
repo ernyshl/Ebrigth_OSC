@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { request } from 'urllib';
 import { sendClockInEmail, sendClockOutEmail } from '@/lib/mailer';
 import { prisma } from '@/lib/prisma';
+import { SCANNERS } from '@/lib/scanners';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,8 @@ function todayStr(): string {
 
 export async function GET() {
   try {
-    const url = `http://${process.env.SCANNER_IP}/ISAPI/AccessControl/AcsEvent?format=json`;
+    const scanner = SCANNERS[0];
+    const url = `http://${scanner.ip}/ISAPI/AccessControl/AcsEvent?format=json`;
 
     const now = new Date();
     const startOfToday = new Date(now);
@@ -42,7 +44,7 @@ export async function GET() {
 
       const { data, res } = await request(url, {
         method: 'POST',
-        digestAuth: `${process.env.SCANNER_USER}:${process.env.SCANNER_PASS}`,
+        digestAuth: `${scanner.user}:${scanner.pass}`,
         data: {
           AcsEventCond: {
             searchID: Date.now().toString(),
@@ -120,12 +122,11 @@ export async function GET() {
             empName,
             clockInTime,
             clockInSerialNo: first.serialNo,
-            clockInEmailSent: false, // will be set true below after send
+            clockInEmailSent: false,
             clockOutTime,
-            // clockOutSerialNo tracks the last scan we sent a clock-out email for.
-            // Start as null so the first clock-out scan triggers an email.
             clockOutSerialNo: null,
             clockOutEmailSent: false,
+            scannerLocation: scanner.location,
           },
         });
 
