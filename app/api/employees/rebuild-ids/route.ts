@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireSession } from '@/lib/auth';
 
 function getPositionCode(role: string): string {
   const r = role.toUpperCase();
@@ -29,6 +30,9 @@ function buildEmployeeId(role: string, branch: string, seq: number): string {
 }
 
 export async function POST() {
+  const { error } = await requireSession();
+  if (error) return error;
+
   try {
     const all = await prisma.branchStaff.findMany({ orderBy: { id: 'asc' } });
 

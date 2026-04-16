@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireSession } from '@/lib/auth';
 
 // GET /api/attendance-logs
 //   ?empNo=44080014&month=4&year=2026           → exact empNo lookup
 //   ?staffName=MOHAMD FAIQ SOUDAGAR&month=4&year=2026 → name-based lookup for BranchStaff
 
 export async function GET(req: NextRequest) {
+  const { error } = await requireSession();
+  if (error) return error;
+
   try {
     const { searchParams } = new URL(req.url);
     const empNo     = searchParams.get('empNo');

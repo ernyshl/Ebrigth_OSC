@@ -194,7 +194,7 @@ function PlanNewWeekPage() {
     if (!startDateStr) return;
     const fetchSavedSchedules = async () => {
       try {
-        const res = await fetch('/api/get-schedules');
+        const res = await fetch('/api/schedules');
         const data = await res.json();
         if (!data.success) return;
         const map: Record<string, Record<string, Set<string>>> = {};
@@ -362,7 +362,7 @@ function PlanNewWeekPage() {
 
     try {
       // Send it to your existing API route folder!
-      const response = await fetch('/api/save-schedule', {
+      const response = await fetch('/api/schedules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(snapshot)

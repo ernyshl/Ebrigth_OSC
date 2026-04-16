@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { prisma as _prisma } from '@/lib/prisma';
-const prisma = _prisma as any;
+import { prisma } from '@/lib/prisma';
+import { requireSession } from '@/lib/auth';
 
 // Position level code (pos2)
 function getPositionCode(role: string): string {
@@ -73,6 +73,8 @@ function toEmployee(s: Record<string, unknown>) {
 }
 
 export async function GET(request: Request) {
+  const { error } = await requireSession();
+  if (error) return error;
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search')?.toLowerCase() || '';
   const branch = searchParams.get('branch') || '';
@@ -90,7 +92,7 @@ export async function GET(request: Request) {
 
   if (search) {
     results = results.filter(
-      (e: any) =>
+      e =>
         e.fullName.toLowerCase().includes(search) ||
         e.email.toLowerCase().includes(search) ||
         e.employeeId.toLowerCase().includes(search)
@@ -101,6 +103,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const { error } = await requireSession();
+  if (error) return error;
+
   try {
     const body = await request.json();
     const { fullName, email, phone, branch, role, gender, nickName, nric, dob,
@@ -167,6 +172,9 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const { error } = await requireSession();
+  if (error) return error;
+
   try {
     const body = await request.json();
     const { id, fullName, email, phone, branch, role, gender, nickName, nric, dob,
@@ -236,6 +244,9 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const { error } = await requireSession();
+  if (error) return error;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

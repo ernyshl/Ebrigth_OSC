@@ -96,7 +96,7 @@ export default function ArchiveSchedulePage() {
   useEffect(() => {
     const fetchSchedules = async () => {
       try {
-        const res = await fetch('/api/get-schedules');
+        const res = await fetch('/api/schedules');
         const data = await res.json();
         if (data.success) setHistory(data.schedules);
       } catch (err) {

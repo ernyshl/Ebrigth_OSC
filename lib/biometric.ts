@@ -1,6 +1,10 @@
 import crypto from "crypto";
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "default-encryption-key-32-chars!!!";
+const _encKey = process.env.ENCRYPTION_KEY;
+if (!_encKey) {
+  throw new Error('ENCRYPTION_KEY environment variable is not set. Add it to your .env file.');
+}
+const ENCRYPTION_KEY: string = _encKey;
 const CIPHER_ALGORITHM = "aes-256-cbc";
 
 export function encryptBiometricData(data: string): string {

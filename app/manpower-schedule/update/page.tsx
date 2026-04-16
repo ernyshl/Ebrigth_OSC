@@ -152,7 +152,7 @@ export default function UpdateSchedulePage() {
   useEffect(() => {
     const fetchSchedules = async () => {
       try {
-        const res = await fetch('/api/get-schedules');
+        const res = await fetch('/api/schedules');
         const data = await res.json();
         if (data.success) setHistory(data.schedules);
       } catch (err) {
@@ -350,7 +350,7 @@ export default function UpdateSchedulePage() {
     };
 
     try {
-      const response = await fetch('/api/save-schedule', {
+      const response = await fetch('/api/schedules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedRecord)

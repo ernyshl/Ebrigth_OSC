@@ -183,6 +183,7 @@ interface BranchStaffMember {
   department: string | null;
   role: string | null;
   email: string | null;
+  status: string | null;
   location: string | null;
 }
 
@@ -300,8 +301,8 @@ export default function AttendanceSummary() {
   const scannedNames = branchFilteredLogs.map(r => r.name.toUpperCase());
   const missingEmployees = branchStaff.filter(s => {
     if (!s.name) return false;
+    if (s.status !== 'Active') return false;   // hide Inactive / Archived / null
     const fullName = s.name.toUpperCase();
-    // Check if any scanned short-name appears in the full BranchStaff name
     return !scannedNames.some(sn => fullName.includes(sn) || sn.includes(fullName));
   });
 
