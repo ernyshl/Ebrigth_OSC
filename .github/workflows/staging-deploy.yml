@@ -15,4 +15,5 @@ jobs:
           host: 103.209.156.225
           username: deploy
           key: ${{ secrets.STAGING_SSH_KEY }}
+          command_timeout: 30m
           script: /home/deploy/deploy.sh osc
