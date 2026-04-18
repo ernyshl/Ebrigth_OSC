@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   BookOpen,
@@ -90,17 +91,10 @@ const dashboards: DashboardCard[] = [
   },
 ];
 
-function getGreeting(): string {
-  if (typeof window === "undefined") return "Welcome";
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
-}
-
 function getDisplayName(email?: string): string {
   if (!email) return "there";
   const local = email.split("@")[0];
+  if (!local) return "there";
   return local.charAt(0).toUpperCase() + local.slice(1);
 }
 
@@ -110,7 +104,13 @@ export default function DashboardHome({ userRole, userEmail }: { userRole?: stri
   const accessibleCount = isBranchManager ? 1 : dashboards.length;
   const totalCount = dashboards.length;
   const displayName = getDisplayName(userEmail);
-  const greeting = getGreeting();
+  const [greeting, setGreeting] = useState("Welcome");
+  useEffect(() => {
+    const h = new Date().getHours();
+    if (h < 12) setGreeting("Good morning");
+    else if (h < 18) setGreeting("Good afternoon");
+    else setGreeting("Good evening");
+  }, []);
 
   return (
     <div className="min-h-full bg-[#fafafa]">
@@ -122,16 +122,14 @@ export default function DashboardHome({ userRole, userEmail }: { userRole?: stri
           {greeting}, {displayName}
         </h1>
         <p className="text-sm text-gray-500">
-          {accessibleCount} of {totalCount} module{totalCount !== 1 ? "s" : ""} available
+          {accessibleCount} of {totalCount} modules available
           {accessibleCount < totalCount && (
             <>
               {" · "}
-              <button
-                type="button"
-                className="text-brand-red font-semibold hover:underline cursor-pointer"
-              >
-                Request access →
-              </button>
+              <span className="text-brand-red font-semibold inline-flex items-center gap-0.5">
+                Request access
+                <ArrowRight className="w-3.5 h-3.5" strokeWidth={2.5} />
+              </span>
             </>
           )}
         </p>
@@ -152,8 +150,7 @@ export default function DashboardHome({ userRole, userEmail }: { userRole?: stri
               return (
                 <div
                   key={dashboard.id}
-                  aria-disabled="true"
-                  className="relative bg-white border border-gray-200 rounded-[10px] p-[18px] opacity-[0.65] hover:opacity-90 hover:shadow-sm transition-all duration-200 cursor-not-allowed"
+                  className="relative bg-white border border-gray-200 rounded-[10px] p-[18px] opacity-[0.65] transition-all duration-200"
                 >
                   <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center mb-3.5">
                     <dashboard.Icon className="w-[18px] h-[18px] text-gray-400" strokeWidth={2} />
