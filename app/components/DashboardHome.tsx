@@ -150,7 +150,7 @@ export default function DashboardHome({ userRole, userEmail }: { userRole?: stri
               return (
                 <div
                   key={dashboard.id}
-                  className="relative bg-white border border-gray-200 rounded-[10px] p-[18px] opacity-[0.65] transition-all duration-200"
+                  className="relative bg-white border border-gray-200 rounded-[10px] p-[18px] opacity-[0.65] hover:opacity-90 hover:shadow-sm cursor-default transition-all duration-200"
                 >
                   <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center mb-3.5">
                     <dashboard.Icon className="w-[18px] h-[18px] text-gray-400" strokeWidth={2} />
