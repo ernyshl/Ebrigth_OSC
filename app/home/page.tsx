@@ -36,16 +36,28 @@ export default function HomePage() {
       {/* header */}
       <header className="bg-white border-b border-gray-200">
         <div className="flex justify-between items-center px-6 py-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-[26px] h-[26px] bg-brand-red rounded-md flex items-center justify-center text-white font-extrabold text-[13px]">
-              E
-            </div>
-            <div>
-              <div className="font-bold text-gray-900 text-[15px] tracking-tight leading-none">
-                Ebright Portal
+          <div className="flex items-center gap-3.5">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(p => !p)}
+              aria-label="Toggle sidebar"
+              className="w-7 h-7 flex flex-col justify-center gap-[4px] cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red focus-visible:ring-offset-2"
+            >
+              <span className="h-[2px] bg-gray-900 rounded-sm"></span>
+              <span className="h-[2px] bg-gray-900 rounded-sm"></span>
+              <span className="h-[2px] bg-gray-900 rounded-sm"></span>
+            </button>
+            <div className="flex items-center gap-2.5">
+              <div className="w-[26px] h-[26px] bg-brand-red rounded-md flex items-center justify-center text-white font-extrabold text-[13px]">
+                E
               </div>
-              <div className="text-gray-500 text-[11px] mt-0.5 leading-none">
-                Dashboard
+              <div>
+                <div className="font-bold text-gray-900 text-[15px] tracking-tight leading-none">
+                  Ebright Portal
+                </div>
+                <div className="text-gray-500 text-[11px] mt-0.5 leading-none">
+                  Dashboard
+                </div>
               </div>
             </div>
           </div>
@@ -58,7 +70,7 @@ export default function HomePage() {
       </header>
 
       <div className="flex min-h-[calc(100vh-62px)]">
-        <Sidebar sidebarOpen={sidebarOpen} onToggle={() => setSidebarOpen(p => !p)} />
+        <Sidebar sidebarOpen={sidebarOpen} onToggle={() => setSidebarOpen(p => !p)} showInternalToggle={false} />
 
         <main className="flex-1 overflow-y-auto">
           <DashboardHome userRole={userRole} userEmail={userEmail} />
