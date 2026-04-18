@@ -59,14 +59,14 @@ Changes vs current:
 Replace the avatar `<div>` (currently line ~45):
 
 ```tsx
-        <div className="w-7 h-7 bg-[#ED1C24] rounded-full flex items-center justify-center text-white font-bold text-xs">
+        <div className="w-7 h-7 bg-brand-red rounded-full flex items-center justify-center text-white font-bold text-xs">
           {userName.split(" ").map((n) => n[0]).join("")}
         </div>
 ```
 
 Changes vs current:
 - `w-10 h-10` → `w-7 h-7` (40px → 28px)
-- `bg-red-500` → `bg-[#ED1C24]`
+- `bg-red-500` → `bg-brand-red`
 - `text-lg` → `text-xs` (scales initials to new size)
 
 - [ ] **Step 4: Change the user-name label to dark text**
@@ -240,7 +240,7 @@ export default function DashboardHome({ userRole, userEmail }: { userRole?: stri
   return (
     <div className="min-h-full bg-[#fafafa]">
       <section className="px-6 pt-12 pb-6 text-center">
-        <div className="text-[10px] tracking-[2px] text-[#ED1C24] font-bold uppercase mb-2">
+        <div className="text-[10px] tracking-[2px] text-brand-red font-bold uppercase mb-2">
           Welcome Back
         </div>
         <h1 className="text-3xl font-bold text-gray-900 tracking-tight mb-1.5">
@@ -253,7 +253,7 @@ export default function DashboardHome({ userRole, userEmail }: { userRole?: stri
               {" · "}
               <button
                 type="button"
-                className="text-[#ED1C24] font-semibold hover:underline cursor-pointer"
+                className="text-brand-red font-semibold hover:underline cursor-pointer"
               >
                 Request access →
               </button>
@@ -303,10 +303,10 @@ export default function DashboardHome({ userRole, userEmail }: { userRole?: stri
               <Link
                 key={dashboard.id}
                 href={targetHref}
-                className="group relative bg-white border border-gray-200 border-l-[3px] border-l-[#ED1C24] rounded-[10px] p-[18px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#ED1C24] hover:shadow-[0_10px_24px_rgba(237,28,36,0.12)]"
+                className="group relative bg-white border border-gray-200 border-l-[3px] border-l-brand-red rounded-[10px] p-[18px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-red hover:shadow-[0_10px_24px_rgba(237,28,36,0.12)]"
               >
-                <div className="w-9 h-9 rounded-lg bg-[#FEF2F2] flex items-center justify-center mb-3.5">
-                  <dashboard.Icon className="w-[18px] h-[18px] text-[#ED1C24]" strokeWidth={2} />
+                <div className="w-9 h-9 rounded-lg bg-brand-red-soft flex items-center justify-center mb-3.5">
+                  <dashboard.Icon className="w-[18px] h-[18px] text-brand-red" strokeWidth={2} />
                 </div>
                 <div className="font-bold text-gray-900 text-sm tracking-tight">
                   {dashboard.title}
@@ -315,7 +315,7 @@ export default function DashboardHome({ userRole, userEmail }: { userRole?: stri
                   {dashboard.items.length} tool{dashboard.items.length !== 1 ? "s" : ""}
                 </div>
                 <ArrowRight
-                  className="absolute top-3.5 right-3.5 w-3.5 h-3.5 text-[#ED1C24] transition-transform duration-200 group-hover:translate-x-1"
+                  className="absolute top-3.5 right-3.5 w-3.5 h-3.5 text-brand-red transition-transform duration-200 group-hover:translate-x-1"
                   strokeWidth={2.5}
                 />
               </Link>
@@ -397,7 +397,7 @@ In `app/home/page.tsx`, replace the `<header>…</header>` block (currently line
               <span className="h-[2px] bg-gray-900 rounded-sm"></span>
             </button>
             <div className="flex items-center gap-2.5">
-              <div className="w-[26px] h-[26px] bg-[#ED1C24] rounded-md flex items-center justify-center text-white font-extrabold text-[13px]">
+              <div className="w-[26px] h-[26px] bg-brand-red rounded-md flex items-center justify-center text-white font-extrabold text-[13px]">
                 E
               </div>
               <div>
