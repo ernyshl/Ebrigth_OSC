@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(node -e ':*)",
+      "Bash(node --env-file=.env -e ':*)",
+      "Bash(ls *.xlsx *.csv)",
+      "Bash(npx tsc:*)",
+      "Bash(npx prisma:*)",
+      "Bash(gh repo:*)"
+    ]
+  }
+}

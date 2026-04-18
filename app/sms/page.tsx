@@ -7,7 +7,7 @@ import UserHeader from "@/app/components/UserHeader";
 
 export default function SMSPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "students" | "attendance" | "enrollment" | "invoices" | "grades" | "freeze">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "students" | "attendance" | "enrollment" | "invoices" | "grades" | "freeze" | "package">("dashboard");
 
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: "📊" },
@@ -34,7 +34,7 @@ export default function SMSPage() {
       </header>
 
       <div className="flex h-[calc(100vh-100px)]">
-        <Sidebar sidebarOpen={sidebarOpen} onCollapse={() => setSidebarOpen(false)} />
+        <Sidebar sidebarOpen={sidebarOpen} onToggle={() => setSidebarOpen(p => !p)} />
 
         {!sidebarOpen && (
           <button

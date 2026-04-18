@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
+import { requireSession } from '@/lib/auth';
 
 export async function PUT(request: Request) {
+  const { error } = await requireSession();
+  if (error) return error;
+
   try {
     const userData = await request.json();
     

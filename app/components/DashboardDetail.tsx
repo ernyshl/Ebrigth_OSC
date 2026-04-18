@@ -46,6 +46,10 @@ const dashboards: DashboardCard[] = [
       { name: "Manpower Planning", href: "/manpower-schedule", icon: "🗂️" },
       { name: "Claims", href: "/claims", icon: "💰" },
       { name: "Attendance", href: "/attendance", icon: "⏰" },
+      { name: "Onboarding", href: "/onboarding", icon: "🟢" },
+      { name: "Offboarding", href: "/offboarding", icon: "🔴" },
+      { name: "HR Dashboard", href: "/hr-dashboard", icon: "📋" },
+      { name: "Manpower Cost Report", href: "/manpower-cost-report", icon: "💸" },
     ],
   },
   {

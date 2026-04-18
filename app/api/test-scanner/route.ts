@@ -1,104 +1,224 @@
 import { NextResponse } from 'next/server';
 import { request } from 'urllib';
+import { sendClockInEmail, sendClockOutEmail } from '@/lib/mailer';
+import { prisma } from '@/lib/prisma';
+import { SCANNERS } from '@/lib/scanners';
 
-// Force Next.js to never cache this route — always fetch live from scanner
 export const dynamic = 'force-dynamic';
 
-// Hikvision firmware requires this exact date format
-function formatHikvisionDate(date: Date) {
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const YYYY = date.getFullYear();
-    const MM = pad(date.getMonth() + 1);
-    const DD = pad(date.getDate());
-    const HH = pad(date.getHours());
-    const mm = pad(date.getMinutes());
-    const ss = pad(date.getSeconds());
-    return `${YYYY}-${MM}-${DD}T${HH}:${mm}:${ss}+08:00`;
+// ─── Hikvision helpers ────────────────────────────────────────────────────────
+
+function formatHikvisionDate(date: Date): string {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}+08:00`;
 }
 
+function formatDisplayTime(isoTime: string): string {
+  return new Date(isoTime).toLocaleTimeString('en-MY', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
+}
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ─── Hikvision event type ─────────────────────────────────────────────────────
+
+interface HikvisionEvent {
+  employeeNoString: string;
+  serialNo: number;
+  time: string;
+  major?: number;
+  minor?: number;
+}
+
+// ─── Route handler ────────────────────────────────────────────────────────────
+
 export async function GET() {
-    try {
-        const url = 'http://192.168.100.147/ISAPI/AccessControl/AcsEvent?format=json';
-        const username = 'admin';
-        const password = 'Admin@1234';
+  try {
+    const scanner = SCANNERS[0];
+    const url = `http://${scanner.ip}/ISAPI/AccessControl/AcsEvent?format=json`;
 
-        const now = new Date();
-        const startOfToday = new Date(now);
-        startOfToday.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
 
-        // Unique ID forces the scanner to do a fresh search instead of returning cached results
-        const uniqueSearchID = Date.now().toString();
+    let allEvents: HikvisionEvent[] = [];
+    let currentPosition = 0;
+    let isFetching = true;
+    let safetyCounter = 0;
 
-        let allEvents: any[] = [];
-        let currentPosition = 0;
-        let isFetching = true;
-        let safetyCounter = 0;
+    while (isFetching && safetyCounter < 50) {
+      safetyCounter++;
 
-        // Pagination loop — Hikvision returns max 30 records per request
-        while (isFetching && safetyCounter < 50) {
-            safetyCounter++;
+      const { data, res } = await request(url, {
+        method: 'POST',
+        digestAuth: `${scanner.user}:${scanner.pass}`,
+        data: {
+          AcsEventCond: {
+            searchID: Date.now().toString(),
+            searchResultPosition: currentPosition,
+            maxResults: 30,
+            major: 0,
+            minor: 0,
+            startTime: formatHikvisionDate(startOfToday),
+            endTime: formatHikvisionDate(now),
+          }
+        },
+        contentType: 'application/json',
+        dataType: 'json',
+        timeout: 8000,
+      });
 
-            const searchPayload = {
-                AcsEventCond: {
-                    searchID: uniqueSearchID,
-                    searchResultPosition: currentPosition,
-                    maxResults: 30,
-                    major: 0,
-                    minor: 0,
-                    startTime: formatHikvisionDate(startOfToday),
-                    endTime: formatHikvisionDate(now),
-                }
-            };
+      if (res.statusCode !== 200) break;
 
-            const { data, res } = await request(url, {
-                method: 'POST',
-                digestAuth: `${username}:${password}`,
-                data: searchPayload,
-                contentType: 'application/json',
-                dataType: 'json',
-                timeout: 8000,
-            });
+      const eventList: HikvisionEvent[] = (data as { AcsEvent?: { InfoList?: HikvisionEvent[]; numOfMatches?: number } }).AcsEvent?.InfoList || [];
+      if (eventList.length > 0) {
+        allEvents.push(...eventList);
+        currentPosition += eventList.length;
+      }
+      if (eventList.length === 0 || (data as { AcsEvent?: { numOfMatches?: number } }).AcsEvent?.numOfMatches === 0) isFetching = false;
+    }
 
-            if (res.statusCode !== 200) {
-                console.error('Scanner returned status:', res.statusCode);
-                break;
-            }
+    const validScans = allEvents.filter(e =>
+      e.employeeNoString && e.employeeNoString !== '0' && e.employeeNoString !== ''
+    );
 
-            const eventList = data.AcsEvent?.InfoList || [];
+    const chronological = [...validScans].sort((a, b) => Number(a.serialNo) - Number(b.serialNo));
 
-            if (eventList.length > 0) {
-                allEvents.push(...eventList);
-                currentPosition += eventList.length;
-            }
+    const today = todayStr();
 
-            // Stop when no more results
-            if (eventList.length === 0 || data.AcsEvent?.numOfMatches === 0) {
-                isFetching = false;
-            }
-        }
+    const allStaff = await prisma.branchStaff.findMany({
+      select: { employeeId: true, name: true, email: true },
+    });
+    const staffByEmpNo = new Map(allStaff.map(s => [s.employeeId, s]));
 
-        // Only keep records that have an actual employee ID (filter out door-open events etc.)
-        const validScans = allEvents.filter(event =>
-            event.employeeNoString &&
-            event.employeeNoString !== '0' &&
-            event.employeeNoString !== ''
-        );
+    const groups = new Map<string, { time: string; serialNo: string }[]>();
+    for (const event of chronological) {
+      const empNo = event.employeeNoString;
+      if (!groups.has(empNo)) groups.set(empNo, []);
+      groups.get(empNo)!.push({ time: event.time, serialNo: String(event.serialNo) });
+    }
 
-        // Sort newest first by serial number
-        const newestFirst = validScans.sort((a, b) => Number(b.serialNo) - Number(a.serialNo));
+    for (const [empNo, scans] of groups) {
+      const staff    = staffByEmpNo.get(empNo);
+      const empName  = staff?.name  ?? empNo;
+      const empEmail = staff?.email ?? '';
 
-        console.log(`Scanner: ${allEvents.length} total events, ${newestFirst.length} valid thumbprints`);
+      const first = scans[0];
+      const last  = scans[scans.length - 1];
+      const hasCheckOut = scans.length > 1;
 
-        return new NextResponse(JSON.stringify(newestFirst, null, 2), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
+      const clockInTime  = formatDisplayTime(first.time);
+      const clockOutTime = hasCheckOut ? formatDisplayTime(last.time) : null;
+
+      const existing = await prisma.attendanceLog.findUnique({
+        where: { date_empNo: { date: today, empNo } },
+      });
+
+      if (!existing) {
+        await prisma.attendanceLog.create({
+          data: {
+            date: today,
+            empNo,
+            empName,
+            clockInTime,
+            clockInSerialNo:   first.serialNo,
+            clockInEmailSent:  false,
+            clockOutTime,
+            clockOutSerialNo:  null,
+            clockOutEmailSent: false,
+            scannerLocation:   scanner.location,
+          },
         });
 
-    } catch (error) {
-        console.error('Scanner connection error:', error);
-        return new NextResponse(
-            JSON.stringify({ error: 'Failed to connect to scanner', detail: String(error) }),
-            { status: 500, headers: { 'Content-Type': 'application/json' } }
-        );
+        if (empEmail) {
+          try {
+            await sendClockInEmail(empEmail, empName, clockInTime);
+            await prisma.attendanceLog.update({
+              where: { date_empNo: { date: today, empNo } },
+              data:  { clockInEmailSent: true },
+            });
+            console.log(`✅ Clock-in email → ${empName} <${empEmail}>`);
+          } catch (e) {
+            console.error(`Clock-in email failed for ${empName}:`, e);
+          }
+        } else {
+          console.warn(`⚠ No email for ${empName} (empNo: ${empNo}) — clock-in email skipped. Add email to BranchStaff.`);
+        }
+
+        if (hasCheckOut && empEmail) {
+          try {
+            await sendClockOutEmail(empEmail, empName, clockOutTime!);
+            await prisma.attendanceLog.update({
+              where: { date_empNo: { date: today, empNo } },
+              data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: true },
+            });
+            console.log(`🔴 Clock-out email → ${empName} <${empEmail}>`);
+          } catch (e) {
+            console.error(`Clock-out email failed for ${empName}:`, e);
+          }
+        }
+
+      } else {
+
+        if (!existing.clockInEmailSent && empEmail) {
+          try {
+            await sendClockInEmail(empEmail, empName, existing.clockInTime);
+            await prisma.attendanceLog.update({
+              where: { date_empNo: { date: today, empNo } },
+              data:  { clockInEmailSent: true },
+            });
+            console.log(`✅ Clock-in email (retry) → ${empName} <${empEmail}>`);
+          } catch (e) {
+            console.error(`Clock-in email failed for ${empName}:`, e);
+          }
+        }
+
+        if (hasCheckOut && last.serialNo !== existing.clockOutSerialNo) {
+          if (empEmail) {
+            try {
+              await sendClockOutEmail(empEmail, empName, clockOutTime!);
+              console.log(`🔴 Clock-out email → ${empName} <${empEmail}> (serial ${last.serialNo})`);
+              await prisma.attendanceLog.update({
+                where: { date_empNo: { date: today, empNo } },
+                data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: true },
+              });
+            } catch (e) {
+              console.error(`Clock-out email failed for ${empName}:`, e);
+              await prisma.attendanceLog.update({
+                where: { date_empNo: { date: today, empNo } },
+                data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: false },
+              });
+            }
+          } else {
+            console.warn(`⚠ No email for ${empName} (empNo: ${empNo}) — clock-out email skipped. Add email to BranchStaff.`);
+            await prisma.attendanceLog.update({
+              where: { date_empNo: { date: today, empNo } },
+              data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: false },
+            });
+          }
+        } else if (hasCheckOut && clockOutTime !== existing.clockOutTime) {
+          await prisma.attendanceLog.update({
+            where: { date_empNo: { date: today, empNo } },
+            data:  { clockOutTime },
+          });
+        }
+      }
     }
+
+    const newestFirst = validScans.sort((a, b) => Number(b.serialNo) - Number(a.serialNo));
+    return new NextResponse(JSON.stringify(newestFirst, null, 2), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  } catch (error) {
+    console.error('Scanner error:', error);
+    return new NextResponse(
+      JSON.stringify({ error: 'Failed to connect to scanner', detail: String(error) }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
 }

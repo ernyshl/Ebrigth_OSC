@@ -12,7 +12,7 @@ export default function ManpowerHub() {
   useEffect(() => {
     const checkHistory = async () => {
       try {
-        const res = await fetch('/api/get-schedules');
+        const res = await fetch('/api/schedules');
         const data = await res.json();
         if (data.success && data.schedules.length > 0) {
           setHasHistory(true);

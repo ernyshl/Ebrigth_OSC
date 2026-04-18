@@ -2,19 +2,16 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { format, parseISO, addDays, startOfWeek, endOfWeek } from "date-fns"; 
-import { DateRange, RangeKeyDict } from "react-date-range"; 
+import { format, parseISO, addDays } from "date-fns";
 import { useSession } from "next-auth/react";
-import "react-date-range/dist/styles.css"; 
-import "react-date-range/dist/theme/default.css"; 
 import Sidebar from "@/app/components/Sidebar";
 
 // --- IMPORT SHARED CONSTANTS ---
 import {
-  COLUMNS, ALL_BRANCHES,
-  getTimeSlotsForDay, isAdminSlot, getEmployeeColor,
+  SHARED_EMPLOYEES, COLUMNS, ALL_BRANCHES,
+  getTimeSlotsForDay, isAdminSlot, getStaffColorByIndex,
   getWorkingDaysForBranch, isOpeningClosingSlot,
-  isManagerOnDutySlot, // <-- NEW IMPORT
+  isManagerOnDutySlot,
 } from "@/lib/manpowerUtils";
 
 
@@ -83,6 +80,7 @@ export default function ArchiveSchedulePage() {
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
+  const [selectedDay, setSelectedDay] = useState<string>("");
   const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [branchStaffData, setBranchStaffData] = useState<Record<string, string[]>>({});
@@ -90,23 +88,14 @@ export default function ArchiveSchedulePage() {
   
   // --- FILTER STATES ---
   const [filterBranch, setFilterBranch] = useState<string>("");
-  const [filterDate, setFilterDate] = useState<string>(""); 
-  
-  // --- CALENDAR POPOVER STATES ---
-  const [showCalendar, setShowCalendar] = useState(false);
-  const [shownDate, setShownDate] = useState(new Date());
-  const [isDateFiltered, setIsDateFiltered] = useState(false);
-  const [range, setRange] = useState([{
-    startDate: new Date(),
-    endDate: new Date(),
-    key: "selection",
-  }]);
+  const [drillYear, setDrillYear] = useState<string | null>(null);
+  const [drillMonth, setDrillMonth] = useState<number | null>(null);
 
   // --- FETCH DATA FROM POSTGRESQL ---
   useEffect(() => {
     const fetchSchedules = async () => {
       try {
-        const res = await fetch('/api/get-schedules');
+        const res = await fetch('/api/schedules');
         const data = await res.json();
         if (data.success) setHistory(data.schedules);
       } catch (err) {
@@ -168,15 +157,11 @@ export default function ArchiveSchedulePage() {
   // --- APPLY FILTERS & ROLE SECURITY TO THE LIST ---
   const filteredHistory = useMemo(() => {
     return history.filter((record: any) => {
-      // SECURITY FILTER: Branch Managers ONLY see their own branch!
-      if (userRole === "BRANCH_MANAGER" && record.branch !== userBranch) {
-        return false;
-      }
-      const matchBranch = filterBranch ? record.branch === filterBranch : true;
-      const matchWeek = filterDate ? record.startDate === filterDate : true;
-      return matchBranch && matchWeek;
+      if (userRole === "BRANCH_MANAGER" && record.branch !== userBranch) return false;
+      if (filterBranch && record.branch !== filterBranch) return false;
+      return true;
     });
-  }, [history, filterBranch, filterDate, userRole, userBranch]);
+  }, [history, filterBranch, userRole, userBranch]);
 
   // --- BULLETPROOF DATA SYNC ---
   const validData = useMemo(() => {
@@ -276,10 +261,32 @@ export default function ArchiveSchedulePage() {
           </div>
 
           <div className="flex-1 overflow-y-auto w-full mx-auto px-4 md:px-6 pb-20">
-            <div className="space-y-8">
-              {getWorkingDaysForBranch(selectedRecord.branch).map((day) => {
-                const slots = getTimeSlotsForDay(day, selectedRecord.branch);
+            <div className="space-y-6">
 
+              {/* DAY TAB BUTTONS */}
+              <div className="flex gap-2 flex-wrap">
+                {getWorkingDaysForBranch(selectedRecord.branch).map((day) => {
+                  const isActive = selectedDay === day;
+                  const validData = selectedRecord.selections || {};
+                  const hasData = Object.keys(validData).some(k => k.startsWith(`${day}-`));
+                  return (
+                    <button key={day} onClick={() => setSelectedDay(day)}
+                      className={`relative px-6 py-3 rounded-xl font-black uppercase text-sm tracking-wide transition-all shadow-sm ${
+                        isActive ? "bg-[#2D3F50] text-white shadow-lg scale-105"
+                        : hasData ? "bg-slate-100 text-slate-700 border-2 border-slate-400 hover:bg-slate-200"
+                        : "bg-white text-slate-400 border-2 border-slate-200 hover:bg-slate-50"
+                      }`}>
+                      {day.slice(0, 3)}
+                      {hasData && <span className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${isActive ? "bg-green-400" : "bg-slate-500"}`} />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedDay && (() => {
+                const day = selectedDay;
+                const slots = getTimeSlotsForDay(day, selectedRecord.branch);
+                const branchStaff = Array.from(new Set([...SHARED_EMPLOYEES, ...(branchStaffData[selectedRecord.branch] || [])]));
                 return (
                   <div key={day} className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
                     <div className="bg-slate-500 p-3 border-b flex flex-col items-center justify-center">
@@ -327,7 +334,7 @@ export default function ArchiveSchedulePage() {
                                       {showManager ? (
                                         // Show manager name for slots where manager is on duty
                                         managerName ? (
-                                          <span className={`inline-block w-full px-2 py-1.5 rounded text-xs font-bold ${getEmployeeColor(managerName)}`}>
+                                          <span className={`inline-block w-full px-2 py-1.5 rounded text-xs font-bold ${getStaffColorByIndex(managerName, branchStaff)}`}>
                                             {managerName}
                                           </span>
                                         ) : (
@@ -351,7 +358,7 @@ export default function ArchiveSchedulePage() {
                                       {COLUMNS.map(col => {
                                         const name = validData[`${day}-${slot}-${col.id}`];
                                         const displayValue = name && name !== "None" ? name : "-";
-                                        const bgColor = name && name !== "None" ? getEmployeeColor(name) : (col.type === 'exec' ? 'bg-slate-50 text-slate-300' : 'bg-white text-slate-300');
+                                        const bgColor = name && name !== "None" ? getStaffColorByIndex(name, branchStaff) : (col.type === 'exec' ? 'bg-slate-50 text-slate-300' : 'bg-white text-slate-300');
                                         return (
                                             <td key={col.id} className={`p-3 border-r border-b border-slate-200 text-center font-bold transition-colors ${bgColor}`}>
                                                 {displayValue}
@@ -371,7 +378,7 @@ export default function ArchiveSchedulePage() {
                     </div>
                   </div>
                 );
-              })}
+              })()}
 
               <SummaryTable data={calculateHoursForData()} />
             </div>
@@ -409,183 +416,135 @@ export default function ArchiveSchedulePage() {
                   </div>
 
                   {/* FILTER CONTROLS */}
-                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 mb-6 relative">
-                    
-                    {userRole !== "BRANCH_MANAGER" && (
-                      <div className="flex-1">
-                        <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Filter by Branch</label>
-                        <select 
-                          value={filterBranch} 
-                          onChange={(e) => setFilterBranch(e.target.value)} 
-                          className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors"
-                        >
-                          <option value="">All Branches</option>
-                          {ALL_BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
-                        </select>
-                      </div>
-                    )}
-                    
-                    <div className="flex-1">
-                      <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Filter by Week</label>
-                      <div 
-                        onClick={() => setShowCalendar(true)}
-                        className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 cursor-pointer flex justify-between items-center transition-colors hover:border-blue-500"
-                      >
-                        <span>
-                          {isDateFiltered 
-                            ? `${format(range[0].startDate, "dd MMM yyyy")} - ${format(range[0].endDate, "dd MMM yyyy")}` 
-                            : "All Weeks"}
-                        </span>
-                        <span>📅</span>
-                      </div>
+                  {userRole !== "BRANCH_MANAGER" && (
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                      <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Branch</label>
+                      <select value={filterBranch} onChange={(e) => { setFilterBranch(e.target.value); setDrillYear(null); setDrillMonth(null); }}
+                        className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors">
+                        <option value="">All Branches</option>
+                        {ALL_BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                      </select>
                     </div>
-                    
-                    {(filterBranch || isDateFiltered) && (
-                      <div className="flex items-end">
-                        <button 
-                          onClick={() => { 
-                            setFilterBranch(""); 
-                            setFilterDate(""); 
-                            setIsDateFiltered(false);
-                          }}
-                          className="h-[50px] px-6 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl font-black uppercase tracking-widest text-xs transition-colors"
-                        >
-                          Clear
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  )}
               </div>
 
-              {/* SCROLLING GRID AREA */}
+              {/* RECORD LIST AREA */}
               <div className="flex-1 overflow-y-auto w-full mx-auto px-4 md:px-6 pb-12">
                   {isLoading ? (
                     <div className="flex justify-center items-center h-40">
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
                     </div>
-                  ) : filteredHistory.length === 0 ? (
-                      <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-300 text-center shadow-sm">
-                          <p className="text-slate-500 font-bold text-lg uppercase tracking-widest">No archived records found matching filters.</p>
-                      </div>
                   ) : (() => {
-                      const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-                      const WEEK_LABELS = ["1 – 7","8 – 14","15 – 21","22 – 31"];
-                      const getWeekBucket = (dateStr: string) => {
-                        const d = parseInt(format(parseISO(dateStr), "d"));
-                        if (d <= 7) return 0; if (d <= 14) return 1; if (d <= 21) return 2; return 3;
-                      };
-                      const byYear: Record<string, any[]> = {};
-                      filteredHistory.forEach(r => {
-                        const y = format(parseISO(r.startDate), "yyyy");
-                        if (!byYear[y]) byYear[y] = [];
-                        byYear[y].push(r);
-                      });
-                      return Object.keys(byYear).sort((a,b) => parseInt(b)-parseInt(a)).map(year => {
-                        const recs = byYear[year];
-                        const monthIdxs = Array.from(new Set(recs.map(r => parseInt(format(parseISO(r.startDate),"M"))-1))).sort((a,b)=>a-b);
-                        const buckets = Array.from(new Set(recs.map(r => getWeekBucket(r.startDate)))).sort();
-                        const lookup: Record<string,any[]> = {};
-                        recs.forEach(r => {
-                          const k = `${parseInt(format(parseISO(r.startDate),"M"))-1}-${getWeekBucket(r.startDate)}`;
-                          if (!lookup[k]) lookup[k] = [];
-                          lookup[k].push(r);
-                        });
-                        return (
-                          <div key={year} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
-                            <div className="bg-[#2D3F50] px-6 py-3">
-                              <h2 className="text-white font-black text-xl uppercase tracking-widest">{year}</h2>
-                            </div>
-                            <div className="overflow-x-auto">
-                              <table className="w-full border-collapse">
-                                <thead>
-                                  <tr className="bg-slate-100">
-                                    <th className="p-3 text-xs font-black uppercase text-slate-400 border-b border-r border-slate-200 w-20"></th>
-                                    {monthIdxs.map(mi => (
-                                      <th key={mi} className="p-3 text-xs font-black uppercase text-slate-600 border-b border-r border-slate-200 text-center min-w-[140px]">
-                                        {MONTH_NAMES[mi]}
-                                      </th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {buckets.map(bucket => (
-                                    <tr key={bucket} className="border-b border-slate-100">
-                                      <td className="p-3 text-xs font-black text-slate-400 border-r border-slate-200 text-center whitespace-nowrap bg-slate-50">
-                                        {WEEK_LABELS[bucket]}
-                                      </td>
-                                      {monthIdxs.map(mi => {
-                                        const cellRecs = lookup[`${mi}-${bucket}`] || [];
-                                        return (
-                                          <td key={mi} className="p-2 border-r border-slate-200 align-top">
-                                            {cellRecs.length > 0 ? (
-                                              <div className="flex flex-col gap-1">
-                                                {cellRecs.map(record => (
-                                                  <button key={record.id} onClick={() => setSelectedRecord(record)}
-                                                    className="w-full text-left px-3 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors">
-                                                    <div className="font-black text-xs text-blue-800 uppercase">{record.branch}</div>
-                                                    <div className="text-[10px] text-blue-500 font-bold mt-0.5">
-                                                      {format(parseISO(record.startDate),"dd MMM")} – {format(parseISO(record.endDate),"dd MMM")}
-                                                    </div>
-                                                  </button>
-                                                ))}
-                                              </div>
-                                            ) : <span className="text-slate-200 text-xs flex justify-center">—</span>}
-                                          </td>
-                                        );
-                                      })}
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
+                    const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+                    const MONTH_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                    const lastDay = (drillYear && drillMonth !== null)
+                      ? new Date(parseInt(drillYear), drillMonth + 1, 0).getDate()
+                      : 31;
+                    const WEEK_RANGES = [
+                      { label: "01 – 07", start: 1, end: 7 },
+                      { label: "08 – 14", start: 8, end: 14 },
+                      { label: "15 – 21", start: 15, end: 21 },
+                      { label: "22 – 28", start: 22, end: 28 },
+                      ...(lastDay >= 29 ? [{ label: `29 – ${String(lastDay).padStart(2, "0")}`, start: 29, end: lastDay }] : []),
+                    ];
+                    const byYear: Record<string, any[]> = {};
+                    filteredHistory.forEach((r: any) => {
+                      const y = format(parseISO(r.startDate), "yyyy");
+                      if (!byYear[y]) byYear[y] = [];
+                      byYear[y].push(r);
+                    });
+
+                    if (drillYear !== null && drillMonth !== null) {
+                      const monthRecs = filteredHistory.filter((r: any) =>
+                        format(parseISO(r.startDate), "yyyy") === drillYear &&
+                        parseInt(format(parseISO(r.startDate), "M")) - 1 === drillMonth
+                      );
+                      return (
+                        <div>
+                          <div className="flex items-center gap-3 mb-5">
+                            <button onClick={() => setDrillMonth(null)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-black transition-colors shadow-sm">← Back</button>
+                            <h2 className="text-lg font-black uppercase tracking-widest text-slate-800">{drillYear} <span className="text-slate-400">›</span> {MONTH_NAMES[drillMonth]}</h2>
                           </div>
-                        );
-                      });
+                          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                            {WEEK_RANGES.map((week, wi) => {
+                              const weekRecs = monthRecs.filter((r: any) => {
+                                const d = parseInt(format(parseISO(r.startDate), "d"));
+                                return d >= week.start && d <= week.end;
+                              });
+                              return (
+                                <div key={week.label} className={`flex gap-4 items-start px-5 py-4 ${wi < WEEK_RANGES.length - 1 ? "border-b border-slate-100" : ""}`}>
+                                  <div className="w-20 shrink-0 text-xs font-black text-slate-400 pt-2">{week.label}</div>
+                                  <div className="flex flex-wrap gap-2 flex-1">
+                                    {weekRecs.length > 0 ? weekRecs.map((record: any) => (
+                                      <button key={record.id}
+                                        onClick={() => { setSelectedRecord(record); const days = getWorkingDaysForBranch(record.branch); if (days.length > 0) setSelectedDay(days[0]); }}
+                                        className="text-left bg-blue-50 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 rounded-xl px-4 py-3 transition-colors min-w-[160px]">
+                                        <div className="font-black text-sm text-blue-800 uppercase tracking-wide">{record.branch}</div>
+                                        <div className="text-xs text-blue-500 font-bold mt-0.5">
+                                          {format(parseISO(record.startDate), "dd MMM")} – {format(parseISO(record.endDate), "dd MMM")}
+                                        </div>
+                                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full mt-1 inline-block ${record.status === "Finalized" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                                          {record.status}
+                                        </span>
+                                      </button>
+                                    )) : <span className="text-slate-200 text-sm font-bold pt-1">—</span>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (Object.keys(byYear).length === 0) {
+                      return (
+                        <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-300 text-center shadow-sm">
+                          <p className="text-slate-500 font-bold text-lg uppercase tracking-widest">No archived records found.</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-4">
+                        {Object.keys(byYear).sort((a, b) => parseInt(b) - parseInt(a)).map(year => {
+                          const recs = byYear[year];
+                          const monthCounts: Record<number, number> = {};
+                          recs.forEach((r: any) => {
+                            const mi = parseInt(format(parseISO(r.startDate), "M")) - 1;
+                            monthCounts[mi] = (monthCounts[mi] || 0) + 1;
+                          });
+                          return (
+                            <div key={year} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                              <div className="bg-[#2D3F50] px-6 py-3">
+                                <h2 className="text-white font-black text-xl uppercase tracking-widest">{year}</h2>
+                              </div>
+                              <div className="p-4 grid grid-cols-6 gap-2">
+                                {[0,1,2,3,4,5,6,7,8,9,10,11].map(mi => {
+                                  const count = monthCounts[mi] || 0;
+                                  const hasRecords = count > 0;
+                                  return (
+                                    <button key={mi}
+                                      onClick={() => { if (hasRecords) { setDrillYear(year); setDrillMonth(mi); } }}
+                                      disabled={!hasRecords}
+                                      className={`rounded-xl py-3 px-2 text-center transition-colors ${hasRecords ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-sm" : "bg-slate-100 text-slate-300 cursor-not-allowed"}`}
+                                    >
+                                      <div className="font-black text-sm">{MONTH_SHORT[mi]}</div>
+                                      {hasRecords && <div className="text-[10px] mt-0.5 opacity-80">{count}</div>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
                   })()}
               </div>
           </main>
       </div>
 
-      {/* --- CENTERED MODAL FOR CALENDAR --- */}
-      {showCalendar && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white p-6 rounded-[2rem] shadow-2xl border border-slate-100 flex flex-col max-w-md w-full relative">
-            <h2 className="text-xl font-black text-slate-800 mb-4 uppercase tracking-tight text-center">Select a Week</h2>
-            
-            <div className="flex justify-center w-full overflow-hidden mb-4">
-              <DateRange
-                onChange={(item: RangeKeyDict) => {
-                  const selection = item.selection;
-                  if (selection.startDate) {
-                    const start = startOfWeek(selection.startDate, { weekStartsOn: 1 });
-                    const end = endOfWeek(selection.startDate, { weekStartsOn: 1 });
-                    setRange([{ startDate: start, endDate: end, key: "selection" }]);
-                    setIsDateFiltered(true);
-                    setFilterDate(format(start, "yyyy-MM-dd")); 
-                    setTimeout(() => setShowCalendar(false), 250);
-                  }
-                }}
-                shownDate={shownDate}
-                onShownDateChange={(date) => setShownDate(date)}
-                moveRangeOnFirstSelection={true}
-                ranges={range}
-                rangeColors={["#3b82f6"]}
-                months={1}
-                direction="horizontal"
-                dateDisplayFormat="dd MMM yyyy"
-                className="border-none"
-              />
-            </div>
-
-            <button 
-              onClick={() => setShowCalendar(false)} 
-              className="w-full py-4 bg-slate-200 text-slate-700 font-black rounded-xl hover:bg-slate-300 uppercase tracking-widest text-sm transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 }

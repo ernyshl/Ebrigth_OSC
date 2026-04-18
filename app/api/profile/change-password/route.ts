@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
+import { requireSession } from '@/lib/auth';
 
 export async function POST(request: Request) {
+  const { error } = await requireSession();
+  if (error) return error;
+
   try {
     const { currentPassword, newPassword } = await request.json();
     

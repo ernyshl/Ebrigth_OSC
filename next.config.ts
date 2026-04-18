@@ -1,6 +1,23 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // serverExternalPackages covers server-component passes.
+  // The webpack() function below covers the instrumentation.ts compilation pass,
+  // which serverExternalPackages does NOT reach in Next.js 15.
+  serverExternalPackages: ['urllib', 'nodemailer'],
+
+  webpack(config, { isServer }) {
+    if (isServer) {
+      // Externalize packages that use Node built-ins (fs, stream, zlib, etc.)
+      // so Webpack emits require('...') instead of trying to bundle them.
+      // This covers the instrumentation.ts compilation pass which
+      // serverExternalPackages does NOT reach in Next.js 15.
+      const prev = Array.isArray(config.externals) ? config.externals : [];
+      config.externals = [...prev, 'urllib', 'nodemailer'];
+    }
+    return config;
+  },
+
   eslint: {
     ignoreDuringBuilds: true,
   },

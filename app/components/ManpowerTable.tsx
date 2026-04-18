@@ -139,7 +139,7 @@ export default function ManpowerTable({ week }: ManpowerTableProps) {
 
   const handleSaveDay = async (day: string) => {
     try {
-      const res = await fetch("/api/save-schedule", {
+      const res = await fetch("/api/schedules", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

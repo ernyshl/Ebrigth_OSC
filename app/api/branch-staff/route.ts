@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth";
 
-// GET ALL STAFF FROM Employee TABLE
 export async function GET() {
+  const { error } = await requireSession();
+  if (error) return error;
+
   try {
     const staff = await prisma.employee.findMany({
       select: { id: true, name: true, nickname: true, branch: true, position: true }
@@ -18,15 +21,17 @@ export async function GET() {
   }
 }
 
-// ADD A NEW EMPLOYEE TO A BRANCH
 export async function POST(request: Request) {
+  const { error } = await requireSession();
+  if (error) return error;
+
   try {
-    const { name, branch } = await request.json();
+    const { name, branch, position } = await request.json();
     if (!name?.trim() || !branch) {
       return NextResponse.json({ error: "Name and branch are required" }, { status: 400 });
     }
     const employee = await prisma.employee.create({
-      data: { name: name.trim(), branch }
+      data: { name: name.trim(), branch, position: position?.trim() || null }
     });
     return NextResponse.json({ success: true, employee });
   } catch (error: any) {

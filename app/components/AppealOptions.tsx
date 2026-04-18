@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import SubAccountSwitcher from "./SubAccountSwitcher";
+
 import Sidebar from "./Sidebar";
 import { jsPDF } from "jspdf";
 
@@ -408,7 +408,7 @@ Ebright Holdings SDN BHD`;
       supportProvided: "",
     });
     setSelectedType(null);
-    setShowPreview(false);
+    setPdfPreviewUrl(null);
     alert("Appeal submitted successfully!");
   };
 
@@ -436,7 +436,7 @@ Ebright Holdings SDN BHD`;
                   d="M4 6h16M4 12h16M4 18h16"
                 />
               </svg>
-            </button>          <SubAccountSwitcher />
+            </button>          
           <button
             onClick={() => router.back()}
             className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
