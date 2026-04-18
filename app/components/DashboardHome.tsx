@@ -99,8 +99,7 @@ function getDisplayName(email?: string): string {
 }
 
 export default function DashboardHome({ userRole, userEmail }: { userRole?: string; userEmail?: string }) {
-  const isBranchManager =
-    userRole === "BRANCH_MANAGER" || (userEmail?.toLowerCase().includes("ebright") ?? false);
+  const isBranchManager = userRole === "BRANCH_MANAGER";
   const accessibleCount = isBranchManager ? 1 : dashboards.length;
   const totalCount = dashboards.length;
   const displayName = getDisplayName(userEmail);
