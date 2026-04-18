@@ -40,13 +40,13 @@ export default function UserHeader({
       {/* User Profile Button */}
       <button
         onClick={() => setDropdownOpen(!dropdownOpen)}
-        className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+        className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-white/20 transition-colors"
       >
-        <div className="w-7 h-7 bg-brand-red rounded-full flex items-center justify-center text-white font-bold text-xs">
+        <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
           {userName.split(" ").map((n) => n[0]).join("")}
         </div>
         <div className="text-left hidden sm:block">
-          <p className="text-sm font-semibold text-gray-900">{userName}</p>
+          <p className="text-sm font-semibold text-white">{userName}</p>
         </div>
       </button>
 
