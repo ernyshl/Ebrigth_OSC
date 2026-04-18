@@ -15,12 +15,14 @@ export async function GET() {
       where: { date: today },
       orderBy: { createdAt: 'desc' },
       select: {
+        date: true,
         empNo: true,
         empName: true,
         clockInTime: true,
         clockOutTime: true,
         clockInSerialNo: true,
         clockOutSerialNo: true,
+        scannerLocation: true,
       },
     });
 

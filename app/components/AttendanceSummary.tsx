@@ -33,6 +33,7 @@ interface AttendanceRecord {
   checkOutStr: string | null;
   checkOutStatus: "Normal" | "Left Early" | null;
   scanCount: number; // total scans from device today
+  scannerLocation: string | null;
 }
 
 // ─── CSV Parser ───────────────────────────────────────────────────────────────
@@ -159,6 +160,7 @@ function buildAttendanceLogs(
       checkOutStr,
       checkOutStatus: checkOutStr ? getCheckOutStatus(checkOutStr, isSaturday) : null,
       scanCount: sorted.length,
+      scannerLocation: null,
     });
   }
 
@@ -249,15 +251,15 @@ export default function AttendanceSummary() {
     try {
       const res = await fetch("/api/attendance-today");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const dbRows: { empNo: string; empName: string; clockInTime: string; clockOutTime: string | null }[] = await res.json();
+      const dbRows: { date: string; empNo: string; empName: string; clockInTime: string; clockOutTime: string | null; scannerLocation: string | null }[] = await res.json();
 
       setRawCount(dbRows.length);
 
       // Build AttendanceRecord from DB rows
       const records: AttendanceRecord[] = dbRows.map(row => {
         const emp = employeesRef.current.find(e => e.scannerRef === row.empNo);
-        const checkInDate = new Date(`1970-01-01T${row.clockInTime}`);
-        const checkOutDate = row.clockOutTime ? new Date(`1970-01-01T${row.clockOutTime}`) : null;
+        const checkInDate = new Date(`${row.date}T${row.clockInTime}`);
+        const checkOutDate = row.clockOutTime ? new Date(`${row.date}T${row.clockOutTime}`) : null;
         const isSaturday = new Date().getDay() === 6;
         return {
           empNo: row.empNo,
@@ -271,6 +273,7 @@ export default function AttendanceSummary() {
           checkOutStr: row.clockOutTime ?? null,
           checkOutStatus: row.clockOutTime ? getCheckOutStatus(row.clockOutTime, isSaturday) : null,
           scanCount: row.clockOutTime ? 2 : 1,
+          scannerLocation: row.scannerLocation,
         };
       });
 
@@ -299,16 +302,12 @@ export default function AttendanceSummary() {
   }, []);
 
   // ── Filter logs to the selected branch ────────────────────────────────────
-  // Match scanner short-names (CSV) against BranchStaff full names for the branch.
-  const branchFilteredLogs = logs.filter(r => {
-    if (r.name === 'Unknown') return false;
-    const shortName = r.name.toUpperCase();
-    return branchStaff.some(s => {
-      if (!s.name) return false;
-      const fullName = s.name.toUpperCase();
-      return fullName.includes(shortName) || shortName.includes(fullName);
-    });
-  });
+  // Show records where the scanner that recorded them is tagged to this location.
+  // Null scannerLocation = pre-migration rows → always show under HQ tab.
+  const branchFilteredLogs = logs.filter(r =>
+    r.scannerLocation === selectedLocation ||
+    (selectedLocation === 'HQ' && (r.scannerLocation === null || r.scannerLocation === 'HQ'))
+  );
 
   // ── Stats ──────────────────────────────────────────────────────────────────
   const checkedInCount = branchFilteredLogs.filter((r) => r.checkOutStr === null).length;
