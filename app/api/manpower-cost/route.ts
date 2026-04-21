@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
 import {
   getWorkingDaysForBranch,
@@ -54,7 +56,6 @@ function calculateHoursFromSelections(
 
     allNames.forEach((emp) => {
       let coachingHoursForDay = 0;
-      let explicitExecHoursForDay = 0;
       let workedThatDay = false;
 
       getTimeSlotsForDay(day, branch).forEach((slot) => {
@@ -65,17 +66,14 @@ function calculateHoursFromSelections(
             const slotDuration = isAdminSlot(slot, branch) ? 0.25 : 1.25;
             if (col.type === "coach") {
               coachingHoursForDay += slotDuration;
-            } else if (col.type === "exec") {
-              explicitExecHoursForDay += slotDuration;
             }
           }
         });
       });
 
       if (workedThatDay) {
-        const execHrs = explicitExecHoursForDay > 0
-          ? explicitExecHoursForDay
-          : Math.max(0, dailyTarget - coachingHoursForDay);
+        // Exec hours = total working hours - coach hours (not from slots, to account for gaps)
+        const execHrs = Math.max(0, dailyTarget - coachingHoursForDay);
 
         staffStats[emp].coachHrs += coachingHoursForDay;
         staffStats[emp].execHrs += execHrs;
@@ -103,6 +101,59 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get("month"); // e.g. "2026-04"
+
+    // Get logged-in user session to determine role-based filtering
+    const session = await getServerSession(authOptions);
+    const sessionUser = session?.user as any;
+    const userRole = sessionUser?.role || "";
+    const isEmployeeView = userRole === "Part_Time" || userRole === "Full_Time";
+
+    // For employee users, resolve their schedule name by matching:
+    // User.email → BranchStaff.email → BranchStaff.nickname → Employee.name
+    // Also try substring matching for name variations (e.g. "IRDIENA" contains "Diena")
+    let employeeFilterNames: string[] = [];
+    if (isEmployeeView && sessionUser?.email) {
+      const dbUser = await prisma.user.findUnique({
+        where: { email: sessionUser.email },
+        select: { name: true, branchName: true },
+      });
+
+      const branchStaffMatch = await prisma.branchStaff.findFirst({
+        where: { email: { equals: sessionUser.email, mode: "insensitive" } },
+        select: { name: true, nickname: true },
+      });
+
+      // Collect all name candidates from User and BranchStaff
+      const candidates = new Set<string>();
+      if (branchStaffMatch?.nickname) candidates.add(branchStaffMatch.nickname.toLowerCase().trim());
+      if (branchStaffMatch?.name) candidates.add(branchStaffMatch.name.toLowerCase().trim());
+      if (dbUser?.name) candidates.add(dbUser.name.toLowerCase().trim());
+      if (dbUser?.branchName) candidates.add(dbUser.branchName.toLowerCase().trim());
+
+      // Also find Employee names that are substrings of our candidates or vice versa
+      // This handles cases like BranchStaff nickname "IRDIENA" → Employee name "Diena"
+      const allEmps = await prisma.employee.findMany({
+        select: { name: true, nickname: true },
+      });
+      const candidateArr = Array.from(candidates);
+      allEmps.forEach((emp) => {
+        const empName = emp.name?.toLowerCase().trim();
+        const empNick = emp.nickname?.toLowerCase().trim();
+        if (!empName) return;
+        for (const c of candidateArr) {
+          // Check exact match, substring match, or if full name contains employee name
+          if (c === empName || c === empNick ||
+              c.includes(empName) || empName.includes(c) ||
+              (empNick && (c.includes(empNick) || empNick.includes(c)))) {
+            candidates.add(empName);
+            if (empNick) candidates.add(empNick);
+            break;
+          }
+        }
+      });
+
+      employeeFilterNames = Array.from(candidates);
+    }
 
     if (!month || !/^\d{4}-\d{2}$/.test(month)) {
       return NextResponse.json(
@@ -282,7 +333,7 @@ export async function GET(request: Request) {
     });
 
     // 4. Aggregate by employee (sum across all weeks in the month)
-    interface DailyEntry { date: string; day: string; coachHrs: number; execHrs: number; totalHrs: number }
+    interface DailyEntry { date: string; day: string; coachHrs: number; execHrs: number; totalHrs: number; scheduleBranch?: string }
 
     const aggregated: Record<string, {
       name: string;
@@ -299,27 +350,47 @@ export async function GET(request: Request) {
       days: DailyEntry[];
     }> = {};
 
+    // Build a name-only Employee lookup to find home branch
+    const nameToHomeBranch: Record<string, string> = {};
+    allEmployees.forEach((e) => {
+      if (e.name && e.branch) {
+        nameToHomeBranch[e.name.toLowerCase().trim()] = e.branch;
+      }
+      if (e.nickname && e.branch) {
+        nameToHomeBranch[e.nickname.toLowerCase().trim()] = e.branch;
+      }
+    });
+
     allEntries.forEach((entry) => {
-      const key = canonicalKey(entry.name, entry.branch);
-      // Look up display name from employee lookup (preserves original casing)
-      const empRecord = employeeLookup[key];
+      // First try to find the employee via the schedule branch key
+      const schedKey = canonicalKey(entry.name, entry.branch);
+      const empRecord = employeeLookup[schedKey];
       const displayName = empRecord?.displayName || entry.name;
-      const displayBranch = empRecord?.displayBranch || entry.branch;
-      // Look up staff info by canonical name (Employee.name), fall back to raw name from selections
-      const canonical = findStaffInfo(displayName, displayBranch);
-      const raw = findStaffInfo(entry.name, entry.branch);
+
+      // Resolve the employee's HOME branch from Employee table (not the schedule branch)
+      const homeBranch = nameToHomeBranch[displayName.toLowerCase().trim()]
+        || nameToHomeBranch[entry.name.toLowerCase().trim()]
+        || empRecord?.displayBranch
+        || entry.branch;
+
+      // Use home branch as the canonical key so replacements aggregate under home branch
+      const homeKey = canonicalKey(displayName, homeBranch);
+
+      // Look up staff info by home branch first, then schedule branch as fallback
+      const homeInfo = findStaffInfo(displayName, homeBranch);
+      const schedInfo = findStaffInfo(entry.name, entry.branch);
       const staffInfo = {
-        position: canonical.position || raw.position,
-        rate: canonical.rate || raw.rate,
+        position: homeInfo.position || schedInfo.position,
+        rate: homeInfo.rate || schedInfo.rate,
       };
 
-      if (!aggregated[key]) {
+      if (!aggregated[homeKey]) {
         const rate = staffInfo.rate || null;
         const position = staffInfo.position || null;
 
-        aggregated[key] = {
+        aggregated[homeKey] = {
           name: displayName,
-          branch: displayBranch,
+          branch: homeBranch,
           rate,
           employmentType: position,
           position,
@@ -333,18 +404,20 @@ export async function GET(request: Request) {
         };
       }
 
-      aggregated[key].coachHrs += entry.coachHrs;
-      aggregated[key].execHrs += entry.execHrs;
-      aggregated[key].totalHrs += entry.totalHrs;
+      aggregated[homeKey].coachHrs += entry.coachHrs;
+      aggregated[homeKey].execHrs += entry.execHrs;
+      aggregated[homeKey].totalHrs += entry.totalHrs;
 
-      // Add daily entries with actual dates
+      // Add daily entries with scheduleBranch so the UI can show replacement notes
+      const scheduleBranch = entry.branch;
       entry.dailyBreakdown.forEach((d: any) => {
-        aggregated[key].days.push({
+        aggregated[homeKey].days.push({
           date: d.date,
           day: d.day,
           coachHrs: d.coachHrs,
           execHrs: d.execHrs,
           totalHrs: d.totalHrs,
+          scheduleBranch: scheduleBranch !== homeBranch ? scheduleBranch : undefined,
         });
       });
     });
@@ -384,6 +457,15 @@ export async function GET(request: Request) {
         };
       });
 
+    // For employee users, filter to only their own data (case-insensitive name match)
+    if (isEmployeeView && employeeFilterNames.length > 0) {
+      const filtered = results.filter((r) =>
+        employeeFilterNames.some((n) => r.name.toLowerCase().trim() === n)
+      );
+      results.length = 0;
+      results.push(...filtered);
+    }
+
     // Sort: PT first (they have cost), then FT, then by name
     results.sort((a, b) => {
       if (a.isPT !== b.isPT) return a.isPT ? -1 : 1;
@@ -407,11 +489,22 @@ export async function GET(request: Request) {
       executiveRate: EXECUTIVE_RATE,
     };
 
+    // Build available weeks list from schedules
+    const weeksSet = new Set<string>();
+    schedules.forEach((s: any) => {
+      weeksSet.add(`${s.startDate}:::${s.endDate}`);
+    });
+    const availableWeeks = Array.from(weeksSet)
+      .map((w) => { const [start, end] = w.split(":::"); return { start, end }; })
+      .sort((a, b) => a.start.localeCompare(b.start));
+
     return NextResponse.json({
       success: true,
       month,
       totals,
       staff: results,
+      isEmployeeView,
+      availableWeeks,
     });
   } catch (error) {
     console.error("Manpower cost calculation error:", error);

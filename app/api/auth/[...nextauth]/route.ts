@@ -30,6 +30,7 @@ export const authOptions: NextAuthOptions = {
         return {
           id: user.id.toString(),
           email: user.email,
+          name: user.name || null,
           role: user.role,
           branchName: user.branchName
         };
@@ -42,6 +43,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.role = (user as any).role;
         token.branchName = (user as any).branchName;
+        token.name = (user as any).name;
       }
       return token;
     },
@@ -50,6 +52,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as any).role = token.role;
         (session.user as any).branchName = token.branchName;
+        (session.user as any).name = token.name;
       }
       return session;
     }
