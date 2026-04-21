@@ -1,281 +1,128 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
-import {
-  BookOpen,
-  BarChart3,
-  Users,
-  Mail,
-  MessageSquare,
-  Package,
-  GraduationCap,
-  Lock,
-  ArrowRight,
-  LucideIcon,
-} from "lucide-react";
-
-type ColorKey = "red" | "purple" | "emerald" | "sky" | "amber" | "rose" | "indigo";
 
 interface DashboardCard {
   id: string;
   title: string;
-  Icon: LucideIcon;
-  color: ColorKey;
-  items: { name: string; href: string }[];
-}
-
-// Full Tailwind class strings (not interpolated) so the v4 scanner extracts them.
-const PALETTE: Record<ColorKey, {
-  tile: string;
   icon: string;
-  stripe: string;
-  hoverBorder: string;
-  hoverShadow: string;
-  arrow: string;
-}> = {
-  red: {
-    tile: "bg-brand-red-soft",
-    icon: "text-brand-red",
-    stripe: "border-l-brand-red",
-    hoverBorder: "hover:border-brand-red",
-    hoverShadow: "hover:shadow-[0_12px_28px_rgba(237,28,36,0.14)]",
-    arrow: "text-brand-red",
-  },
-  purple: {
-    tile: "bg-purple-50",
-    icon: "text-purple-600",
-    stripe: "border-l-purple-500",
-    hoverBorder: "hover:border-purple-500",
-    hoverShadow: "hover:shadow-[0_12px_28px_rgba(147,51,234,0.14)]",
-    arrow: "text-purple-600",
-  },
-  emerald: {
-    tile: "bg-emerald-50",
-    icon: "text-emerald-600",
-    stripe: "border-l-emerald-500",
-    hoverBorder: "hover:border-emerald-500",
-    hoverShadow: "hover:shadow-[0_12px_28px_rgba(16,185,129,0.14)]",
-    arrow: "text-emerald-600",
-  },
-  sky: {
-    tile: "bg-sky-50",
-    icon: "text-sky-600",
-    stripe: "border-l-sky-500",
-    hoverBorder: "hover:border-sky-500",
-    hoverShadow: "hover:shadow-[0_12px_28px_rgba(14,165,233,0.14)]",
-    arrow: "text-sky-600",
-  },
-  amber: {
-    tile: "bg-amber-50",
-    icon: "text-amber-600",
-    stripe: "border-l-amber-500",
-    hoverBorder: "hover:border-amber-500",
-    hoverShadow: "hover:shadow-[0_12px_28px_rgba(245,158,11,0.14)]",
-    arrow: "text-amber-600",
-  },
-  rose: {
-    tile: "bg-rose-50",
-    icon: "text-rose-600",
-    stripe: "border-l-rose-500",
-    hoverBorder: "hover:border-rose-500",
-    hoverShadow: "hover:shadow-[0_12px_28px_rgba(244,63,94,0.14)]",
-    arrow: "text-rose-600",
-  },
-  indigo: {
-    tile: "bg-indigo-50",
-    icon: "text-indigo-600",
-    stripe: "border-l-indigo-500",
-    hoverBorder: "hover:border-indigo-500",
-    hoverShadow: "hover:shadow-[0_12px_28px_rgba(99,102,241,0.14)]",
-    arrow: "text-indigo-600",
-  },
-};
+  color: string;
+  items: {
+    name: string;
+    href: string;
+    icon: string;
+  }[];
+}
 
 const dashboards: DashboardCard[] = [
   {
     id: "library",
     title: "Library",
-    Icon: BookOpen,
-    color: "purple",
+    icon: "📚",
+    color: "bg-purple-500",
     items: [
-      { name: "Documents", href: "#" },
-      { name: "Resources", href: "#" },
+      { name: "Documents", href: "#", icon: "📄" },
+      { name: "Resources", href: "#", icon: "📁" },
     ],
   },
   {
     id: "internal-dashboard",
     title: "Internal Dashboard",
-    Icon: BarChart3,
-    color: "emerald",
+    icon: "📊",
+    color: "bg-green-500",
     items: [
-      { name: "Analytics", href: "#" },
-      { name: "Reports", href: "#" },
+      { name: "Analytics", href: "#", icon: "📈" },
+      { name: "Reports", href: "#", icon: "📋" },
     ],
   },
   {
     id: "hrms",
     title: "HRMS",
-    Icon: Users,
-    color: "red",
+    icon: "👥",
+    color: "bg-blue-500",
     items: [
-      { name: "Employee Dashboard", href: "/dashboard-employee-management" },
-      { name: "Manpower Planning", href: "/manpower-schedule" },
-      { name: "Attendance", href: "/attendance" },
-      { name: "Claims", href: "/claims" },
-      { name: "Manpower Cost Report", href: "/manpower-cost-report" },
+      { name: "Employee Dashboard", href: "/dashboard-employee-management", icon: "📊" },
+      { name: "Manpower Planning", href: "/manpower-schedule", icon: "🗂️" },
+      { name: "Attendance", href: "/attendance", icon: "📅" },
+      { name: "Claims", href: "/claims", icon: "💰" },
+      { name: "Manpower Cost Report", href: "/manpower-cost-report", icon: "💸" },
     ],
   },
   {
     id: "crm",
     title: "CRM",
-    Icon: Mail,
-    color: "sky",
+    icon: "📰",
+    color: "bg-yellow-500",
     items: [
-      { name: "Content Manager", href: "#" },
-      { name: "Media", href: "#" },
+      { name: "Content Manager", href: "#", icon: "✏️" },
+      { name: "Media", href: "#", icon: "🖼️" },
     ],
   },
   {
     id: "sms",
     title: "SMS",
-    Icon: MessageSquare,
-    color: "amber",
+    icon: "💬",
+    color: "bg-indigo-500",
     items: [
-      { name: "Messages", href: "#" },
-      { name: "Templates", href: "#" },
+      { name: "Messages", href: "#", icon: "💌" },
+      { name: "Templates", href: "#", icon: "📧" },
     ],
   },
   {
     id: "inventory",
     title: "Inventory",
-    Icon: Package,
-    color: "rose",
+    icon: "📦",
+    color: "bg-pink-500",
     items: [
-      { name: "Stock Management", href: "#" },
-      { name: "Warehouse", href: "#" },
+      { name: "Stock Management", href: "#", icon: "📊" },
+      { name: "Warehouse", href: "#", icon: "🏭" },
     ],
   },
   {
     id: "academy",
     title: "Academy",
-    Icon: GraduationCap,
-    color: "indigo",
+    icon: "🎓",
+    color: "bg-indigo-600",
     items: [
-      { name: "Event Management", href: "/academy" },
-      { name: "Courses", href: "#" },
+      { name: "Event Management", href: "/academy", icon: "📅" },
+      { name: "Courses", href: "#", icon: "📖" },
     ],
   },
 ];
 
-function getDisplayName(userName?: string, email?: string): string {
-  if (userName && userName.trim()) return userName.trim();
-  if (!email) return "there";
-  const local = email.split("@")[0];
-  if (!local) return "there";
-  return local.charAt(0).toUpperCase() + local.slice(1);
-}
-
-export default function DashboardHome({
-  userRole,
-  userEmail,
-  userName,
-}: {
-  userRole?: string;
-  userEmail?: string;
-  userName?: string;
-}) {
-  const isBranchManager = userRole === "BRANCH_MANAGER";
+export default function DashboardHome({ userRole, userEmail }: { userRole?: string; userEmail?: string }) {
+  const isBranchManager = userRole === "BRANCH_MANAGER" || (userEmail?.toLowerCase().includes("ebright") ?? false);
   const accessibleCount = isBranchManager ? 1 : dashboards.length;
-  const totalCount = dashboards.length;
-  const displayName = getDisplayName(userName, userEmail);
-  const [greeting, setGreeting] = useState("Welcome");
-  useEffect(() => {
-    const h = new Date().getHours();
-    if (h < 12) setGreeting("Good morning");
-    else if (h < 18) setGreeting("Good afternoon");
-    else setGreeting("Good evening");
-  }, []);
 
   return (
-    <div className="min-h-full bg-[#fafafa]">
-      <section className="px-6 pt-12 pb-6 text-center">
-        <div className="text-[10px] tracking-[2px] text-brand-red font-bold uppercase mb-2">
-          Welcome Back
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <h1 className="text-4xl font-bold text-center text-red-600 mb-2">Welcome</h1>
+          <p className="text-center text-gray-600">{accessibleCount} accessible dashboard{accessibleCount !== 1 ? "s" : ""}</p>
         </div>
-        <h1 className="text-3xl font-bold text-gray-900 tracking-tight mb-1.5">
-          {greeting}, {displayName}
-        </h1>
-        <p className="text-sm text-gray-500">
-          {accessibleCount} of {totalCount} modules available
-          {accessibleCount < totalCount && (
-            <>
-              {" · "}
-              <span className="text-brand-red font-semibold inline-flex items-center gap-0.5">
-                Request access
-                <ArrowRight className="w-3.5 h-3.5" strokeWidth={2.5} />
-              </span>
-            </>
-          )}
-        </p>
-      </section>
+      </header>
 
-      <main className="max-w-[1080px] mx-auto px-6 pb-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <main className="max-w-5xl mx-auto px-4 py-12">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {dashboards.map((dashboard) => {
-            const isLocked = isBranchManager && dashboard.id !== "hrms";
-            const targetHref =
-              dashboard.id === "academy"
-                ? "/academy"
-                : dashboard.id === "sms"
-                ? "/sms"
-                : `/dashboards/${dashboard.id}`;
-            const palette = PALETTE[dashboard.color];
-
-            if (isLocked) {
-              return (
-                <div
-                  key={dashboard.id}
-                  className="relative bg-white border border-gray-200 rounded-xl p-6 opacity-[0.65] hover:opacity-90 hover:shadow-sm cursor-default transition-all duration-200"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mb-4">
-                    <dashboard.Icon className="w-6 h-6 text-gray-400" strokeWidth={2} />
-                  </div>
-                  <div className="font-bold text-gray-900 text-base tracking-tight">
-                    {dashboard.title}
-                  </div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    {dashboard.items.length} tool{dashboard.items.length !== 1 ? "s" : ""}
-                  </div>
-                  <div className="absolute top-4 right-4 flex items-center gap-1 bg-gray-100 px-2 py-1 rounded-full">
-                    <Lock className="w-2.5 h-2.5 text-gray-400" strokeWidth={2.5} />
-                    <span className="text-[9px] font-semibold uppercase tracking-[0.5px] text-gray-400">
-                      Locked
-                    </span>
-                  </div>
-                </div>
-              );
-            }
+            const isDisabled = isBranchManager && dashboard.id !== "hrms";
+            const targetHref = dashboard.id === "academy" ? "/academy" : dashboard.id === "sms" ? "/sms" : `/dashboards/${dashboard.id}`;
+            const href = isDisabled ? "#" : targetHref;
 
             return (
-              <Link
-                key={dashboard.id}
-                href={targetHref}
-                className={`group relative bg-white border border-gray-200 border-l-[3px] ${palette.stripe} rounded-xl p-6 shadow-sm transition-all duration-200 hover:-translate-y-0.5 ${palette.hoverBorder} ${palette.hoverShadow}`}
-              >
-                <div className={`w-12 h-12 rounded-xl ${palette.tile} flex items-center justify-center mb-4`}>
-                  <dashboard.Icon className={`w-6 h-6 ${palette.icon}`} strokeWidth={2} />
+              <Link key={dashboard.id} href={href} aria-disabled={isDisabled} className={isDisabled ? "pointer-events-none" : ""}>
+                <div className={`p-3 rounded-lg flex items-center justify-center gap-3 aspect-square transition-all duration-300
+                  ${isDisabled ? "bg-slate-300 text-slate-500 opacity-60 grayscale" : `${dashboard.color} text-white hover:shadow-lg hover:scale-105`}
+                `}>
+                  <div className="text-center">
+                    <span className="text-2xl block mb-1">{dashboard.icon}</span>
+                    <h2 className="text-sm font-bold">{dashboard.title}</h2>
+                    {isDisabled && (
+                      <span className="text-[10px] uppercase font-black tracking-widest mt-2 block bg-slate-400/20 px-2 py-1 rounded">Locked</span>
+                    )}
+                  </div>
                 </div>
-                <div className="font-bold text-gray-900 text-base tracking-tight">
-                  {dashboard.title}
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {dashboard.items.length} tool{dashboard.items.length !== 1 ? "s" : ""}
-                </div>
-                <ArrowRight
-                  className={`absolute top-5 right-5 w-4 h-4 ${palette.arrow} transition-transform duration-200 group-hover:translate-x-1`}
-                  strokeWidth={2.5}
-                />
               </Link>
             );
           })}
