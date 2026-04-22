@@ -2,14 +2,13 @@ import { withAuth } from "next-auth/middleware";
 
 export default withAuth({
   pages: {
-    signIn: "/login", // If not logged in, always go here
+    signIn: "/login",
   },
 });
 
-// This "matcher" tells Next.js which pages to protect.
-// We want to protect everything EXCEPT the login page itself.
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|login).*)",
+    // Exclude: API routes, Next.js internals, static files, HRMS login, and all CRM routes (CRM has its own auth)
+    "/((?!api|_next/static|_next/image|favicon.ico|login|crm).*)",
   ],
 };

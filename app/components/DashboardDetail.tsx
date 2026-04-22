@@ -53,6 +53,18 @@ const dashboards: DashboardCard[] = [
     ],
   },
   {
+    id: "crm",
+    title: "CRM",
+    icon: "📊",
+    color: "bg-yellow-500",
+    items: [
+      { name: "Open CRM", href: "/crm", icon: "🚀" },
+      { name: "Contacts", href: "/crm/contacts", icon: "👥" },
+      { name: "Pipeline", href: "/crm/opportunities", icon: "📋" },
+      { name: "Automations", href: "/crm/automations", icon: "⚡" },
+    ],
+  },
+  {
     id: "cms",
     title: "CMS",
     icon: "📰",

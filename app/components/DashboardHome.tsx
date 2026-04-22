@@ -91,7 +91,8 @@ const dashboards: DashboardCard[] = [
 ];
 
 export default function DashboardHome({ userRole, userEmail }: { userRole?: string; userEmail?: string }) {
-  const isBranchManager = userRole === "BRANCH_MANAGER" || (userEmail?.toLowerCase().includes("ebright") ?? false);
+  // Only BRANCH_MANAGER is locked to HRMS-only. Admins see everything.
+  const isBranchManager = userRole === "BRANCH_MANAGER";
   const accessibleCount = isBranchManager ? 1 : dashboards.length;
 
   return (
