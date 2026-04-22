@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/auth';
+import { requireSession, requireRole } from '@/lib/auth';
+import { ADMIN_ROLES } from '@/lib/roles';
 
 // Position level code (pos2)
 function getPositionCode(role: string): string {
@@ -101,7 +102,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { error } = await requireSession();
+  const { error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   try {
@@ -170,7 +171,7 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const { error } = await requireSession();
+  const { error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   try {
@@ -240,7 +241,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const { error } = await requireSession();
+  const { error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   try {

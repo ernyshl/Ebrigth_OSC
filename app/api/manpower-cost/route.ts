@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/nextauth";
 import { prisma } from "@/lib/prisma";
 import {
   getWorkingDaysForBranch,
@@ -9,6 +9,7 @@ import {
   isAdminSlot,
   COLUMNS,
 } from "@/lib/manpowerUtils";
+import { isEmployee } from "@/lib/roles";
 
 // Executive rate is fixed at RM11/hr for all
 const EXECUTIVE_RATE = 11;
@@ -106,7 +107,7 @@ export async function GET(request: Request) {
     const session = await getServerSession(authOptions);
     const sessionUser = session?.user as any;
     const userRole = sessionUser?.role || "";
-    const isEmployeeView = userRole === "Part_Time" || userRole === "Full_Time";
+    const isEmployeeView = isEmployee(userRole);
 
     // For employee users, resolve their schedule name by matching:
     // User.email → BranchStaff.email → BranchStaff.nickname → Employee.name
@@ -457,11 +458,16 @@ export async function GET(request: Request) {
         };
       });
 
-    // For employee users, filter to only their own data (case-insensitive name match)
-    if (isEmployeeView && employeeFilterNames.length > 0) {
-      const filtered = results.filter((r) =>
-        employeeFilterNames.some((n) => r.name.toLowerCase().trim() === n)
-      );
+    // For employee users, filter to only their own data (case-insensitive name match).
+    // Fail closed: if we couldn't resolve any identifier for this employee, they see
+    // nothing — never the full cost dataset. Previously this fell through to the
+    // unfiltered results when `employeeFilterNames` was empty.
+    if (isEmployeeView) {
+      const filtered = employeeFilterNames.length === 0
+        ? []
+        : results.filter((r) =>
+            employeeFilterNames.some((n) => r.name.toLowerCase().trim() === n)
+          );
       results.length = 0;
       results.push(...filtered);
     }

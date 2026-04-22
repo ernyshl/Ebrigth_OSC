@@ -8,6 +8,7 @@ import Link from "next/link";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import CustomSelect from "@/app/components/CustomSelect";
+import { isEmployee as isEmployeeRole, isPartTime, isFullTime } from "@/lib/roles";
 
 // --- HELPERS ---
 const fmtHrs = (h: number): string => {
@@ -101,9 +102,9 @@ export default function ManpowerCostReportPage() {
   const userName = (session?.user as any)?.name || "";
   // For employee accounts, User.branchName currently stores their name (matches Employee.name and ManpowerSchedule.selections values).
   const employeeName = (session?.user as any)?.branchName || "";
-  const isEmployee = userRole === "Part_Time" || userRole === "Full_Time";
-  const isEmployeePT = userRole === "Part_Time";
-  const isEmployeeFT = userRole === "Full_Time";
+  const isEmployee = isEmployeeRole(userRole);
+  const isEmployeePT = isPartTime(userRole);
+  const isEmployeeFT = isFullTime(userRole);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(AVAILABLE_MONTHS[0].value);
