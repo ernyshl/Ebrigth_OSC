@@ -24,7 +24,7 @@ jobs:
           script: |
             set -e
             cd /home/deploy/Ebrigth_OSC || mkdir -p /home/deploy/Ebrigth_OSC && cd /home/deploy/Ebrigth_OSC
-            git pull origin staging || git clone <YOUR_REPO_URL> .
+            git pull origin staging || git clone https://github.com/EbrightOD/Ebrigth_OSC.git .
             export DATABASE_URL="${{ secrets.DATABASE_URL }}"
             docker build --build-arg DATABASE_URL=$DATABASE_URL -t ebright-osc:latest .
             docker rm -f ebright-osc-staging || true
