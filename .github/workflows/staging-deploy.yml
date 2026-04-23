@@ -9,10 +9,19 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Deploy to staging server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 103.209.156.225
           username: deploy
           key: ${{ secrets.STAGING_SSH_KEY }}
-          script: /home/deploy/deploy.sh osc
+          command_timeout: 30m
+          script: |
+            cd /path/to/your/app
+            git pull origin staging
+            export DATABASE_URL="${{ secrets.DATABASE_URL }}"
+            docker build --build-arg DATABASE_URL=$DATABASE_URL -t ebright-osc:latest .
+            docker run -d -p 3000:3000 --name ebright-osc-container ebright-osc:latest
