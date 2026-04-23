@@ -6,24 +6,26 @@ on:
       - staging
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to staging server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 103.209.156.225
-          username: deploy
-          key: ${{ secrets.STAGING_SSH_KEY }}
-          script: /home/deploy/deploy.sh osc
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-on:
-  push:
-    branches:
-      - staging
+      - name: Build Docker image
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: docker build --build-arg DATABASE_URL=$DATABASE_URL -t ebright-osc:latest .
 
-jobs:
+      - name: Login to Docker Registry
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Push Docker image
+        run: docker push ebright-osc:latest
+
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to staging server
