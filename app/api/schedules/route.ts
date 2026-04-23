@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/auth';
+import { requireSession, requireRole } from '@/lib/auth';
+import { MANAGEMENT_ROLES } from '@/lib/roles';
 import { z } from 'zod';
 
 const SaveScheduleSchema = z.object({
@@ -34,7 +35,7 @@ export async function GET() {
 
 // POST /api/schedules — create or update a schedule
 export async function POST(req: Request) {
-  const { session, error } = await requireSession();
+  const { session, error } = await requireRole(MANAGEMENT_ROLES);
   if (error) return error;
 
   try {

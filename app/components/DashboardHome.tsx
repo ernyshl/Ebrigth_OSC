@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { isBranchManager } from "@/lib/roles";
 
 interface DashboardCard {
   id: string;
@@ -44,7 +45,7 @@ const dashboards: DashboardCard[] = [
       { name: "Employee Dashboard", href: "/dashboard-employee-management", icon: "📊" },
       { name: "Manpower Planning", href: "/manpower-schedule", icon: "🗂️" },
       { name: "Attendance", href: "/attendance", icon: "📅" },
-      { name: "Claims", href: "/claims", icon: "💰" },
+      { name: "Claims", href: "/claim", icon: "💰" },
       { name: "Manpower Cost Report", href: "/manpower-cost-report", icon: "💸" },
     ],
   },
@@ -91,9 +92,8 @@ const dashboards: DashboardCard[] = [
 ];
 
 export default function DashboardHome({ userRole, userEmail }: { userRole?: string; userEmail?: string }) {
-  // Only BRANCH_MANAGER is locked to HRMS-only. Admins see everything.
-  const isBranchManager = userRole === "BRANCH_MANAGER";
-  const accessibleCount = isBranchManager ? 1 : dashboards.length;
+  const branchManager = isBranchManager(userRole) || (userEmail?.toLowerCase().includes("ebright") ?? false);
+  const accessibleCount = branchManager ? 1 : dashboards.length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -107,7 +107,7 @@ export default function DashboardHome({ userRole, userEmail }: { userRole?: stri
       <main className="max-w-5xl mx-auto px-4 py-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {dashboards.map((dashboard) => {
-            const isDisabled = isBranchManager && dashboard.id !== "hrms";
+            const isDisabled = branchManager && dashboard.id !== "hrms";
             const targetHref = dashboard.id === "academy" ? "/academy" : dashboard.id === "sms" ? "/sms" : `/dashboards/${dashboard.id}`;
             const href = isDisabled ? "#" : targetHref;
 

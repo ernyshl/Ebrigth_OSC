@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { BRANCH_OPTIONS, ROLE_OPTIONS, CONTRACT_OPTIONS, GENDER_OPTIONS } from "@/lib/constants";
+import { isSuperAdmin } from "@/lib/roles";
 
 interface User {
   id: string;
@@ -54,7 +55,9 @@ const field = (label: string, value: string | undefined | null) => (
   </div>
 );
 
-export default function UserManagement({ userRole = "SUPER_ADMIN" }: UserManagementProps) {
+// Defaults to "" so that a caller forgetting to pass userRole fails closed
+// via `isSuperAdmin("") === false`, rather than silently granting admin access.
+export default function UserManagement({ userRole = "" }: UserManagementProps) {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +70,7 @@ export default function UserManagement({ userRole = "SUPER_ADMIN" }: UserManagem
   const searchParams = useSearchParams();
   const targetEmployeeId = searchParams.get("employeeId");
 
-  const isAuthorized = userRole === "SUPER_ADMIN";
+  const isAuthorized = isSuperAdmin(userRole);
 
   useEffect(() => {
     if (!isAuthorized) { setLoading(false); return; }

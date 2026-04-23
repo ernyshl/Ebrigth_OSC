@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { Pool } from "pg";
+import { requireRole } from "@/lib/auth";
+import { MANAGEMENT_ROLES } from "@/lib/roles";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -41,6 +43,9 @@ const offboardingRaw = [
 // MC data is now fetched from the MedicalLeave table (see below)
 
 export async function GET() {
+  const { error } = await requireRole(MANAGEMENT_ROLES);
+  if (error) return error;
+
   const client = await pool.connect();
   try {
     // --- Onboarding (hardcoded) ---
