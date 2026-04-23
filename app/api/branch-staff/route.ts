@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/auth";
+import { requireSession, requireRole } from "@/lib/auth";
+import { MANAGEMENT_ROLES } from "@/lib/roles";
 
 export async function GET() {
   const { error } = await requireSession();
@@ -58,7 +59,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { error } = await requireSession();
+  const { error } = await requireRole(MANAGEMENT_ROLES);
   if (error) return error;
 
   // Reverse map: full branch name → short code stored in BranchStaff

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { Pool } from "pg";
+import { requireRole } from "@/lib/auth";
+import { ADMIN_ROLES } from "@/lib/roles";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -29,6 +31,9 @@ interface AutoCountLeave {
  * Also backfills from existing LeaveTransaction table if ?seedFromLocal=true
  */
 export async function POST(req: Request) {
+  const { error } = await requireRole(ADMIN_ROLES);
+  if (error) return error;
+
   const client = await pool.connect();
   const { searchParams } = new URL(req.url);
   const seedFromLocal = searchParams.get("seedFromLocal") === "true";

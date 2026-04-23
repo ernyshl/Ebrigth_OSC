@@ -3,6 +3,8 @@ import { request } from 'urllib';
 import { sendClockInEmail, sendClockOutEmail } from '@/lib/mailer';
 import { prisma } from '@/lib/prisma';
 import { SCANNERS } from '@/lib/scanners';
+import { requireRole } from '@/lib/auth';
+import { ADMIN_ROLES } from '@/lib/roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +38,9 @@ interface HikvisionEvent {
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function GET() {
+  const { error } = await requireRole(ADMIN_ROLES);
+  if (error) return error;
+
   try {
     const scanner = SCANNERS[0];
     const url = `http://${scanner.ip}/ISAPI/AccessControl/AcsEvent?format=json`;

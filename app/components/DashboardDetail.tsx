@@ -44,12 +44,24 @@ const dashboards: DashboardCard[] = [
     items: [
       { name: "Employee Dashboard", href: "/dashboard-employee-management", icon: "📊" },
       { name: "Manpower Planning", href: "/manpower-schedule", icon: "🗂️" },
-      { name: "Claims", href: "/claims", icon: "💰" },
+      { name: "Claims", href: "/claim", icon: "💰" },
       { name: "Attendance", href: "/attendance", icon: "⏰" },
       { name: "Onboarding", href: "/onboarding", icon: "🟢" },
       { name: "Offboarding", href: "/offboarding", icon: "🔴" },
       { name: "HR Dashboard", href: "/hr-dashboard", icon: "📋" },
       { name: "Manpower Cost Report", href: "/manpower-cost-report", icon: "💸" },
+    ],
+  },
+  {
+    id: "crm",
+    title: "CRM",
+    icon: "📊",
+    color: "bg-yellow-500",
+    items: [
+      { name: "Open CRM", href: "/crm", icon: "🚀" },
+      { name: "Contacts", href: "/crm/contacts", icon: "👥" },
+      { name: "Pipeline", href: "/crm/opportunities", icon: "📋" },
+      { name: "Automations", href: "/crm/automations", icon: "⚡" },
     ],
   },
   {

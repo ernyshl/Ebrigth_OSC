@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/auth';
+import { requireRole } from '@/lib/auth';
+import { ADMIN_ROLES } from '@/lib/roles';
 
 function getPositionCode(role: string): string {
   const r = role.toUpperCase();
@@ -30,7 +31,7 @@ function buildEmployeeId(role: string, branch: string, seq: number): string {
 }
 
 export async function POST() {
-  const { error } = await requireSession();
+  const { error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   try {

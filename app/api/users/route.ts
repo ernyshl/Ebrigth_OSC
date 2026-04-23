@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/auth';
+import { requireRole } from '@/lib/auth';
+import { ADMIN_ROLES, ROLE_VALUES } from '@/lib/roles';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+
+// `role` is constrained to the canonical list in lib/roles.ts. The DB column
+// is still a free-form string for backwards compatibility, but this schema
+// prevents the API from ever writing an off-list value — closing the
+// "POST /api/users with role: 'SuperAdmin_X'" escalation vector.
+const RoleEnum = z.enum(ROLE_VALUES);
 
 const CreateUserSchema = z.object({
   name:       z.string().optional(),
   email:      z.string().email(),
   password:   z.string().min(8),
-  role:       z.string().min(1),
+  role:       RoleEnum,
   branchName: z.string().optional(),
 });
 
@@ -17,18 +24,18 @@ const UpdateUserSchema = z.object({
   name:       z.string().optional(),
   email:      z.string().email().optional(),
   password:   z.string().min(8).optional(),
-  role:       z.string().optional(),
+  role:       RoleEnum.optional(),
   branchName: z.string().optional(),
 });
 
 const PatchUserSchema = z.object({
   id:     z.number().int(),
   action: z.enum(['toggle-status', 'change-role']),
-  role:   z.string().optional(),
+  role:   RoleEnum.optional(),
 });
 
 export async function GET() {
-  const { error } = await requireSession();
+  const { error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   try {
@@ -44,7 +51,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { error } = await requireSession();
+  const { error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   try {
@@ -72,7 +79,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const { error } = await requireSession();
+  const { error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   try {
@@ -109,7 +116,7 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { error } = await requireSession();
+  const { error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   try {
@@ -143,7 +150,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { error } = await requireSession();
+  const { error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   try {

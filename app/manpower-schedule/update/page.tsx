@@ -13,6 +13,7 @@ import {
   getWorkingDaysForBranch, isOpeningClosingSlot,
   isManagerOnDutySlot,
 } from "@/lib/manpowerUtils";
+import { isBranchManager } from "@/lib/roles";
 
 // --- DATE FORMATTING HELPERS ---
 const formatDateString = (dateStr: string) => {
@@ -169,7 +170,7 @@ export default function UpdateSchedulePage() {
 
   const filteredHistory = useMemo(() => {
     return history.filter((record: any) => {
-      if (userRole === "BRANCH_MANAGER" && record.branch !== userBranch) return false;
+      if (isBranchManager(userRole) && record.branch !== userBranch) return false;
       if (filterBranch && record.branch !== filterBranch) return false;
       return true;
     });
@@ -813,7 +814,7 @@ export default function UpdateSchedulePage() {
                 </h1>
               </div>
 
-              {userRole !== "BRANCH_MANAGER" && (
+              {!isBranchManager(userRole) && (
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6">
                   <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Branch</label>
                   <select value={filterBranch} onChange={(e) => { setFilterBranch(e.target.value); setDrillYear(null); setDrillMonth(null); }}

@@ -16,6 +16,7 @@ import {
   isManagerOnDutySlot,
   SELECT_ARROW_WHITE, SELECT_ARROW_DARK
 } from "@/lib/manpowerUtils";
+import { isBranchManager } from "@/lib/roles";
 
 
 // --- HELPER COMPONENT: SUMMARY TABLE ---
@@ -115,7 +116,7 @@ function PlanNewWeekPage() {
       const userBranch = (session.user as any).branchName;
 
       // If they are a branch manager, skip the selection screen immediately!
-      if (userRole === "BRANCH_MANAGER" && userBranch) {
+      if (isBranchManager(userRole) && userBranch) {
         setSelectedBranch(userBranch);
         setHasConfirmedBranch(true);
       }
@@ -461,7 +462,7 @@ function PlanNewWeekPage() {
                 </button>
               )}
               {/* ONLY show "Change Branch" if they are NOT a Branch Manager */}
-              {hasConfirmedBranch && !hasConfirmedWeek && userRole !== "BRANCH_MANAGER" && (
+              {hasConfirmedBranch && !hasConfirmedWeek && !isBranchManager(userRole) && (
                 <button
                   onClick={() => setHasConfirmedBranch(false)}
                   className="bg-slate-200 text-slate-700 hover:bg-slate-300 px-6 py-3 rounded-xl font-bold uppercase transition-colors shadow-sm"

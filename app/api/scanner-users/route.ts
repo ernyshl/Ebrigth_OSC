@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { request } from 'urllib';
-import { requireSession } from '@/lib/auth';
+import { requireRole } from '@/lib/auth';
+import { ADMIN_ROLES } from '@/lib/roles';
 import { SCANNERS } from '@/lib/scanners';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const { error } = await requireSession();
+  const { error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   const scanner = SCANNERS[0];

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
+import { ALL_ROLES } from "@/lib/roles";
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -19,14 +20,9 @@ interface UserAccount {
 
 type ModalMode = "create" | "edit" | "permission" | null;
 
-const SYSTEM_ROLES = [
-  "SUPER_ADMIN",
-  "ADMIN",
-  "BRANCH_MANAGER",
-  "HOD",
-  "EXECUTIVE",
-  "INTERN",
-];
+// Pulled from the canonical list so the dropdown can never offer a value the
+// /api/users zod validator will reject.
+const SYSTEM_ROLES = ALL_ROLES;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -46,6 +42,8 @@ function RoleBadge({ role }: { role: string }) {
     HOD: "bg-cyan-100 text-cyan-800",
     EXECUTIVE: "bg-green-100 text-green-800",
     INTERN: "bg-yellow-100 text-yellow-800",
+    Full_Time: "bg-emerald-100 text-emerald-800",
+    Part_Time: "bg-amber-100 text-amber-800",
   };
   const cls = colours[role] ?? "bg-gray-100 text-gray-700";
   return (
