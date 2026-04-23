@@ -4,6 +4,8 @@ RUN apk add --no-cache openssl
 COPY package*.json ./
 RUN npm ci
 COPY prisma ./prisma/
+ARG DATABASE_URL
+ENV DATABASE_URL=$DATABASE_URL
 RUN npx prisma generate
 COPY . .
 RUN npm run build
