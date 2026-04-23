@@ -205,7 +205,7 @@ function PlanNewWeekPage() {
             if (!val || val === "None") return;
             const dayName = key.split('-')[0];
             if (!dayMap[dayName]) dayMap[dayName] = new Set();
-            dayMap[dayName].add(val as string);
+            dayMap[dayName].add((val as string).toUpperCase());
           });
           if (Object.keys(dayMap).length > 0) map[s.branch] = dayMap;
         });
@@ -656,7 +656,7 @@ function PlanNewWeekPage() {
                                       {(branchManagerData[managerReplacementBranch[day] || selectedBranch] || []).map(e => {
                                         const mgReplacementBranch = managerReplacementBranch[day];
                                         const conflictBranch = mgReplacementBranch
-                                          ? Object.entries(scheduledElsewhere).find(([, dayMap]) => dayMap[day]?.has(e))?.[0]
+                                          ? Object.entries(scheduledElsewhere).find(([, dayMap]) => dayMap[day]?.has(e.toUpperCase()))?.[0]
                                           : undefined;
                                         const isConflict = !!conflictBranch;
                                         const isAssignedAsStaff = COLUMNS.some(c => selections[`${day}-${slot}-${c.id}`] === e);
@@ -709,7 +709,7 @@ function PlanNewWeekPage() {
                                             const usedInCol = namesUsedInOtherColumns.has(e);
                                             // find which branch already has this employee scheduled on this specific day
                                             const conflictBranch = replacementBranch
-                                              ? Object.entries(scheduledElsewhere).find(([, dayMap]) => dayMap[day]?.has(e))?.[0]
+                                              ? Object.entries(scheduledElsewhere).find(([, dayMap]) => dayMap[day]?.has(e.toUpperCase()))?.[0]
                                               : undefined;
                                             const isConflict = !!conflictBranch;
                                             return (
