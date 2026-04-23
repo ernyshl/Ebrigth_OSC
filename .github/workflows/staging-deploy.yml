@@ -11,8 +11,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          submodules: false  # Skip problematic submodules
 
       - name: Deploy to staging server
         uses: appleboy/ssh-action@v1.0.3
@@ -23,8 +21,10 @@ jobs:
           command_timeout: 30m
           script: |
             set -e
-            cd /home/deploy/Ebrigth_OSC || mkdir -p /home/deploy/Ebrigth_OSC && cd /home/deploy/Ebrigth_OSC
-            git pull origin staging || git clone https://github.com/EbrightOD/Ebrigth_OSC.git .
+            cd /home/deploy/Ebrigth_OSC || (mkdir -p /home/deploy/Ebrigth_OSC && cd /home/deploy/Ebrigth_OSC && git init)
+            git remote set-url origin https://github.com/EbrightOD/Ebrigth_OSC.git || git remote add origin https://github.com/EbrightOD/Ebrigth_OSC.git
+            git fetch origin staging
+            git reset --hard origin/staging
             export DATABASE_URL="${{ secrets.DATABASE_URL }}"
             docker build --build-arg DATABASE_URL=$DATABASE_URL -t ebright-osc:latest .
             docker rm -f ebright-osc-staging || true
