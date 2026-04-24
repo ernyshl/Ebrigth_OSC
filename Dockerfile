@@ -2,7 +2,7 @@ FROM node:20-alpine
 WORKDIR /app
 RUN apk add --no-cache openssl
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund && node -e "require('zod')"
 COPY prisma ./prisma/
 ARG DATABASE_URL
 ENV DATABASE_URL=$DATABASE_URL
