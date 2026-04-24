@@ -1,8 +1,101 @@
-# Ebright Ticketing System - Frontend Only
+# Ebright OSC — HRMS + CRM Platform
 
-A production-ready ticketing system frontend built with React, Vite, React Query, React Router, and Tailwind CSS.
+A multi-module platform including HRMS (manpower scheduling, attendance, HR) and a full **CRM module** for managing lead pipelines, omnichannel messaging (WhatsApp + Email), visual automation workflows, and external integrations across multiple branches.
 
-> **Note:** This is a frontend-only implementation with mock data. No backend or database required.
+---
+
+## CRM Module — Quick Start
+
+### Prerequisites
+- **Node.js 20+** and **npm**
+- **PostgreSQL 14+** (shared with HRMS — connection in `.env`)
+- **Redis 7+** (for BullMQ background jobs)
+
+### Setup
+
+```bash
+# 1. Install dependencies
+npm install --legacy-peer-deps
+
+# 2. Copy env file and fill in values
+cp .env.example .env
+# Edit .env — at minimum set: DATABASE_URL, REDIS_URL, BETTER_AUTH_SECRET, ENCRYPTION_KEY
+
+# 3. Run database migrations (adds all crm_* tables)
+npx prisma migrate dev --name crm-init
+
+# 4. Seed demo data (16 pipeline stages, 3 branches, 80 contacts, users)
+npm run db:seed
+
+# 5. Start the Next.js app
+npm run dev
+
+# 6. Start the BullMQ worker process (separate terminal)
+npm run worker
+```
+
+### Demo Credentials (after seeding)
+
+| Role | Email | Password |
+|---|---|---|
+| Super Admin | admin@ebright.my | password123 |
+| Agency Admin | agency@ebright.my | password123 |
+| BM (KL) | bm.kl@ebright.my | password123 |
+| BM (PJ) | bm.pj@ebright.my | password123 |
+| BM (Subang) | bm.subang@ebright.my | password123 |
+| Branch Staff | staff1@ebright.my | password123 |
+
+Access the CRM at: `http://localhost:3000/crm`
+
+### Key Commands
+
+```bash
+npm run dev          # Next.js development server
+npm run worker       # BullMQ background workers
+npm run build        # Production build
+npm run test         # Vitest unit tests
+npm run test:e2e     # Playwright end-to-end tests (requires running app)
+npm run db:migrate   # Run Prisma migrations
+npm run db:seed      # Seed demo data
+npm run db:generate  # Regenerate Prisma client after schema changes
+```
+
+---
+
+## CRM Features
+
+- **Lead Pipeline Kanban** — 16-stage pipeline, drag-and-drop (@hello-pangea/dnd), color-coded by staleness
+- **Contacts** — Malaysian phone normalization (E.164), duplicate detection, bulk actions, CSV export
+- **Automation Engine** — React Flow visual editor, 12 trigger types, 13 action types, BullMQ workers
+- **Omnichannel Messaging** — WhatsApp (Meta Cloud API + Twilio), Email (Resend), unified inbox
+- **Dashboard** — 8 Tremor widgets, conversion funnel, leaderboard, trends, date range selector
+- **Integrations** — Meta Lead Ads, TikTok, Wix, Google Forms/Sheets, Google Calendar, Website Form embed
+- **Multi-tenancy** — Agency → Branch → User hierarchy, 4 RBAC roles
+- **Web Push Notifications** — VAPID-based, with notification inbox
+- **PDPA Compliance** — Every personal data access logged to `core_audit_logs`
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) — tenancy model, BullMQ topology, automation engine design
+- [Integrations](docs/INTEGRATIONS.md) — OAuth setup for Meta, TikTok, Google, Twilio, Resend
+- [Automation](docs/AUTOMATION.md) — node reference, merge tag reference
+- [API](docs/API.md) — public API endpoints, authentication, rate limits
+- [Changelog](CHANGELOG.md) — deviations from spec, stubbed features
+
+## Docker Deployment
+
+```bash
+# Build and run
+docker-compose -f docker/docker-compose.yml up -d
+
+# The app connects to the shared Postgres/Redis via DATABASE_URL + REDIS_URL env vars
+```
+
+See [nginx.conf.example](nginx.conf.example) for reverse proxy configuration.
+
+---
+
+## HRMS Module (existing)
 
 ## Tech Stack
 

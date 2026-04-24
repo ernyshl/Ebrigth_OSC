@@ -4,8 +4,12 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+
 }
+
+// ============================================================
+// EXISTING HRMS MODELS (do not modify)
+// ============================================================
 
 model User {
   id           Int      @id @default(autoincrement())
@@ -106,28 +110,945 @@ model AttendanceLog {
 
 model LeaveTransaction {
   id                 Int       @id @default(autoincrement())
-  EmployeeCode       String?   @db.VarChar(50)
-  LeaveTypeCode      String?   @db.VarChar(20)
-  LeaveTransId       String?   @db.VarChar(200)
+  EmployeeCode       String?
+  LeaveTypeCode      String?
+  LeaveTransId       String?
   ApplyDate          DateTime? @db.Timestamp(6)
-  ApplyReason        String?   @db.VarChar(500)
-  ApplyStatus        String?   @db.VarChar(10)
-  Attachment         String?   @db.VarChar(500)
-  DayNo              Decimal?  @db.Decimal(5, 1)
-  HourNo             Decimal?  @db.Decimal(5, 1)
-  Days               String?   @db.VarChar(10)
-  Source             String?   @db.VarChar(20)
-  LeaveAdjustmentId  String?   @db.VarChar(200)
+  ApplyReason        String?
+  ApplyStatus        String?
+  Attachment         String?
+  DayNo              Decimal?
+  HourNo             Decimal?
+  Days               String?
+  Source             String?
+  LeaveAdjustmentId  String?
   LeaveDate          DateTime? @db.Date
   FromTime           DateTime? @db.Time(6)
   ToTime             DateTime? @db.Time(6)
   IsHourly           Boolean?
   IsAdjustment       Boolean?
-  LeaveCreditId      String?   @db.VarChar(200)
+  LeaveCreditId      String?
   created_at         DateTime? @default(now()) @db.Timestamp(6)
-  ActionRemark       String?   @db.VarChar(500)
+  ActionRemark       String?
   RequiredThirdParty Boolean?
   WorkingHours       Int?
 
   @@unique([LeaveTransId, LeaveDate], map: "unique_leave_trans")
+}
+
+model MedicalLeave {
+  id           Int       @id @default(autoincrement())
+  employeeCode String
+  name         String?
+  position     String?
+  dept         String?
+  branch       String?
+  leaveDate    DateTime  @db.Date
+  reason       String?
+  status       String?
+  days         String?
+  leaveTransId String?   @unique
+  attachment   String?
+  createdAt    DateTime  @default(now()) @db.Timestamp(6)
+}
+
+model AttendanceLogST {
+  id                Int      @id @default(autoincrement())
+  date              String
+  empNo             String
+  empName           String
+  clockInTime       String
+  clockInSerialNo   String
+  clockInEmailSent  Boolean  @default(false)
+  clockOutTime      String?
+  clockOutSerialNo  String?
+  clockOutEmailSent Boolean  @default(false)
+  createdAt         DateTime @default(now()) @db.Timestamptz
+  updatedAt         DateTime @updatedAt @db.Timestamptz
+
+  @@unique([date, empNo])
+}
+
+// ============================================================
+// SHARED AUDIT LOG (used by all Ebright modules)
+// ============================================================
+
+model core_audit_log {
+  id         String   @id @default(uuid())
+  tenantId   String?
+  userId     String?
+  userEmail  String?
+  action     String
+  entity     String
+  entityId   String?
+  meta       Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, entity, createdAt])
+  @@index([userId, createdAt])
+}
+
+// ============================================================
+// CRM MODULE — Better Auth tables
+// ============================================================
+
+model crm_auth_user {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  name          String?
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions      crm_auth_session[]
+  accounts      crm_auth_account[]
+  userBranches  crm_user_branch[]
+  notifications crm_notification[]
+  tasks         crm_task[]
+  notes         crm_note[]
+  calls         crm_call[]
+  apiKeys       crm_api_key[]
+  assignedContacts    crm_contact[]    @relation("AssignedUser")
+  assignedOpportunities crm_opportunity[] @relation("AssignedUser")
+  stageHistories crm_stage_history[]
+  automationRuns crm_automation_run[]
+  messages      crm_message[]
+  appointments  crm_appointment[]
+
+  @@map("crm_auth_user")
+}
+
+model crm_auth_session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user crm_auth_user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("crm_auth_session")
+}
+
+model crm_auth_account {
+  id                    String    @id @default(uuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user crm_auth_user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("crm_auth_account")
+}
+
+model crm_auth_verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("crm_auth_verification")
+}
+
+// ============================================================
+// CRM CORE MODELS
+// ============================================================
+
+model crm_tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches crm_branch[]
+
+  @@map("crm_tenant")
+}
+
+model crm_branch {
+  id               String   @id @default(uuid())
+  tenantId         String
+  name             String
+  address          String?
+  phone            String?
+  email            String?
+  operatingHours   Json?
+  timezone         String   @default("Asia/Kuala_Lumpur")
+  branchManagerId  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant           crm_tenant          @relation(fields: [tenantId], references: [id])
+  userBranches     crm_user_branch[]
+  pipelines        crm_pipeline[]
+  contacts         crm_contact[]
+  opportunities    crm_opportunity[]
+  tasks            crm_task[]
+  messages         crm_message[]
+  appointments     crm_appointment[]
+  automations      crm_automation[]
+  integrations     crm_integration[]
+  websiteForms     crm_website_form[]
+  emailSettings    crm_email_settings?
+  whatsappSettings crm_whatsapp_settings?
+  tags             crm_tag[]
+  customValues     crm_custom_value[]   @relation("BranchCustomValues")
+  messageTemplates crm_message_template[]
+
+  @@index([tenantId])
+  @@map("crm_branch")
+}
+
+enum CrmUserRole {
+  SUPER_ADMIN
+  AGENCY_ADMIN
+  BRANCH_MANAGER
+  BRANCH_STAFF
+}
+
+model crm_user_branch {
+  id        String      @id @default(uuid())
+  userId    String
+  branchId  String
+  tenantId  String
+  role      CrmUserRole
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user   crm_auth_user @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch crm_branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId])
+  @@index([tenantId])
+  @@map("crm_user_branch")
+}
+
+model crm_pipeline {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch        crm_branch        @relation(fields: [branchId], references: [id])
+  stages        crm_stage[]
+  opportunities crm_opportunity[]
+
+  @@index([tenantId, branchId])
+  @@map("crm_pipeline")
+}
+
+model crm_stage {
+  id         String   @id @default(uuid())
+  tenantId   String
+  pipelineId String
+  name       String
+  shortCode  String
+  order      Int
+  color      String   @default("blue")
+  stuckHoursYellow Int @default(24)
+  stuckHoursRed    Int @default(48)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  pipeline          crm_pipeline        @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  opportunities     crm_opportunity[]
+  stageHistoriesFrom crm_stage_history[] @relation("FromStage")
+  stageHistoriesTo   crm_stage_history[] @relation("ToStage")
+
+  @@index([tenantId, pipelineId, order])
+  @@map("crm_stage")
+}
+
+enum TrialDay {
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
+
+model crm_contact {
+  id                String    @id @default(uuid())
+  tenantId          String
+  branchId          String
+  firstName         String
+  lastName          String?
+  email             String?
+  phone             String?
+  leadSourceId      String?
+  assignedUserId    String?
+  preferredBranchId String?
+  preferredTrialDay TrialDay?
+  enrolledPackage   String?
+  childName1        String?
+  childAge1         String?
+  childName2        String?
+  childAge2         String?
+  childName3        String?
+  childAge3         String?
+  childName4        String?
+  childAge4         String?
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  branch         crm_branch        @relation(fields: [branchId], references: [id])
+  leadSource     crm_lead_source?  @relation(fields: [leadSourceId], references: [id])
+  assignedUser   crm_auth_user?    @relation("AssignedUser", fields: [assignedUserId], references: [id])
+  contactTags    crm_contact_tag[]
+  notes          crm_note[]
+  tasks          crm_task[]
+  calls          crm_call[]
+  messages       crm_message[]
+  opportunities  crm_opportunity[]
+  appointments   crm_appointment[]
+  automationRuns crm_automation_run[]
+
+  @@index([tenantId, branchId])
+  @@index([tenantId, email])
+  @@index([tenantId, phone])
+  @@map("crm_contact")
+}
+
+model crm_opportunity {
+  id               String    @id @default(uuid())
+  tenantId         String
+  branchId         String
+  contactId        String
+  pipelineId       String
+  stageId          String
+  value            Decimal   @default(0) @db.Decimal(12, 2)
+  assignedUserId   String?
+  lastStageChangeAt DateTime @default(now())
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  branch        crm_branch         @relation(fields: [branchId], references: [id])
+  contact       crm_contact        @relation(fields: [contactId], references: [id])
+  pipeline      crm_pipeline       @relation(fields: [pipelineId], references: [id])
+  stage         crm_stage          @relation(fields: [stageId], references: [id])
+  assignedUser  crm_auth_user?     @relation("AssignedUser", fields: [assignedUserId], references: [id])
+  stageHistory  crm_stage_history[]
+
+  @@index([tenantId, branchId, stageId])
+  @@index([tenantId, pipelineId])
+  @@map("crm_opportunity")
+}
+
+model crm_stage_history {
+  id            String   @id @default(uuid())
+  tenantId      String
+  opportunityId String
+  fromStageId   String?
+  toStageId     String
+  changedByUserId String?
+  note          String?
+  changedAt     DateTime @default(now())
+
+  opportunity   crm_opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  fromStage     crm_stage?      @relation("FromStage", fields: [fromStageId], references: [id])
+  toStage       crm_stage       @relation("ToStage", fields: [toStageId], references: [id])
+  changedByUser crm_auth_user?  @relation(fields: [changedByUserId], references: [id])
+
+  @@index([tenantId, opportunityId])
+  @@map("crm_stage_history")
+}
+
+model crm_lead_source {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contacts crm_contact[]
+
+  @@index([tenantId])
+  @@map("crm_lead_source")
+}
+
+model crm_tag {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String?
+  name      String
+  color     String   @default("#3b82f6")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch      crm_branch?       @relation(fields: [branchId], references: [id])
+  contactTags crm_contact_tag[]
+
+  @@index([tenantId])
+  @@map("crm_tag")
+}
+
+model crm_contact_tag {
+  id        String   @id @default(uuid())
+  contactId String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  contact crm_contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag     crm_tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, tagId])
+  @@map("crm_contact_tag")
+}
+
+model crm_note {
+  id        String   @id @default(uuid())
+  tenantId  String
+  contactId String
+  userId    String?
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contact crm_contact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user    crm_auth_user? @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, contactId])
+  @@map("crm_note")
+}
+
+model crm_task {
+  id             String    @id @default(uuid())
+  tenantId       String
+  branchId       String
+  contactId      String?
+  assignedUserId String?
+  title          String
+  dueAt          DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  branch       crm_branch?    @relation(fields: [branchId], references: [id])
+  contact      crm_contact?   @relation(fields: [contactId], references: [id])
+  assignedUser crm_auth_user? @relation(fields: [assignedUserId], references: [id])
+
+  @@index([tenantId, branchId])
+  @@index([tenantId, assignedUserId, dueAt])
+  @@map("crm_task")
+}
+
+enum MessageChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+model crm_message {
+  id                String           @id @default(uuid())
+  tenantId          String
+  branchId          String
+  contactId         String
+  userId            String?
+  channel           MessageChannel
+  direction         MessageDirection
+  body              String
+  subject           String?
+  status            String           @default("pending")
+  providerMessageId String?
+  errorMessage      String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  branch  crm_branch     @relation(fields: [branchId], references: [id])
+  contact crm_contact    @relation(fields: [contactId], references: [id])
+  user    crm_auth_user? @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, branchId, contactId])
+  @@map("crm_message")
+}
+
+model crm_call {
+  id        String   @id @default(uuid())
+  tenantId  String
+  contactId String
+  userId    String?
+  outcome   String?
+  notes     String?
+  duration  Int?
+  createdAt DateTime @default(now())
+
+  contact crm_contact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user    crm_auth_user? @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, contactId])
+  @@map("crm_call")
+}
+
+model crm_message_template {
+  id        String         @id @default(uuid())
+  tenantId  String
+  branchId  String?
+  name      String
+  channel   MessageChannel
+  subject   String?
+  body      String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  branch crm_branch? @relation(fields: [branchId], references: [id])
+
+  @@index([tenantId])
+  @@map("crm_message_template")
+}
+
+enum CustomValueScope {
+  TENANT
+  BRANCH
+}
+
+model crm_custom_value {
+  id        String           @id @default(uuid())
+  tenantId  String
+  key       String
+  value     String
+  scope     CustomValueScope @default(TENANT)
+  scopeId   String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  branch crm_branch? @relation("BranchCustomValues", fields: [scopeId], references: [id])
+
+  @@unique([tenantId, scope, scopeId, key])
+  @@index([tenantId])
+  @@map("crm_custom_value")
+}
+
+enum AutomationTriggerType {
+  NEW_LEAD
+  STAGE_CHANGED
+  TAG_ADDED
+  TAG_REMOVED
+  TIME_IN_STAGE
+  SCHEDULED
+  FORM_SUBMITTED
+  INCOMING_MESSAGE
+  CUSTOM_FIELD_CHANGED
+  APPOINTMENT_BOOKED
+  CONTACT_REPLIED
+  NO_REPLY_AFTER
+}
+
+enum AutomationRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model crm_automation {
+  id            String                @id @default(uuid())
+  tenantId      String
+  branchId      String?
+  name          String
+  triggerType   AutomationTriggerType
+  triggerConfig Json                  @default("{}")
+  graph         Json                  @default("{}")
+  enabled       Boolean               @default(false)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  branch crm_branch?          @relation(fields: [branchId], references: [id])
+  runs   crm_automation_run[]
+
+  @@index([tenantId])
+  @@map("crm_automation")
+}
+
+model crm_automation_run {
+  id                String              @id @default(uuid())
+  tenantId          String
+  automationId      String
+  contactId         String?
+  triggeredByUserId String?
+  status            AutomationRunStatus @default(PENDING)
+  startedAt         DateTime            @default(now())
+  completedAt       DateTime?
+  logs              Json                @default("[]")
+
+  automation        crm_automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  contact           crm_contact?   @relation(fields: [contactId], references: [id])
+  triggeredByUser   crm_auth_user? @relation(fields: [triggeredByUserId], references: [id])
+
+  @@index([tenantId, automationId])
+  @@map("crm_automation_run")
+}
+
+enum IntegrationType {
+  META
+  TIKTOK
+  WIX
+  GOOGLE_FORMS
+  GOOGLE_CALENDAR
+  OUTLOOK
+  WEBSITE_FORM
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
+model crm_integration {
+  id           String            @id @default(uuid())
+  tenantId     String
+  branchId     String
+  type         IntegrationType
+  credentials  String?
+  status       IntegrationStatus @default(DISCONNECTED)
+  lastSyncAt   DateTime?
+  meta         Json?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  branch      crm_branch                 @relation(fields: [branchId], references: [id])
+  oauthTokens crm_integration_oauth_token[]
+
+  @@unique([branchId, type])
+  @@index([tenantId])
+  @@map("crm_integration")
+}
+
+model crm_integration_oauth_token {
+  id            String    @id @default(uuid())
+  integrationId String
+  accessToken   String
+  refreshToken  String?
+  expiresAt     DateTime?
+  scope         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  integration crm_integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@map("crm_integration_oauth_token")
+}
+
+model crm_website_form {
+  id               String   @id @default(uuid())
+  tenantId         String
+  branchId         String
+  name             String
+  schema           Json     @default("[]")
+  publicSlug       String   @unique
+  submissionsCount Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  branch crm_branch @relation(fields: [branchId], references: [id])
+
+  @@index([tenantId])
+  @@map("crm_website_form")
+}
+
+model crm_appointment {
+  id               String   @id @default(uuid())
+  tenantId         String
+  branchId         String
+  contactId        String
+  userId           String?
+  startAt          DateTime
+  endAt            DateTime
+  title            String?
+  notes            String?
+  calendarProvider String?
+  externalId       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  branch  crm_branch     @relation(fields: [branchId], references: [id])
+  contact crm_contact    @relation(fields: [contactId], references: [id])
+  user    crm_auth_user? @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, branchId])
+  @@map("crm_appointment")
+}
+
+model crm_notification {
+  id        String    @id @default(uuid())
+  tenantId  String
+  userId    String
+  type      String
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user crm_auth_user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, readAt])
+  @@map("crm_notification")
+}
+
+model crm_email_settings {
+  id                    String   @id @default(uuid())
+  tenantId              String
+  branchId              String   @unique
+  fromEmail             String
+  fromName              String
+  resendDomainVerified  Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  branch crm_branch @relation(fields: [branchId], references: [id])
+
+  @@index([tenantId])
+  @@map("crm_email_settings")
+}
+
+enum WhatsAppProvider {
+  META_CLOUD
+  TWILIO
+}
+
+model crm_whatsapp_settings {
+  id          String           @id @default(uuid())
+  tenantId    String
+  branchId    String           @unique
+  provider    WhatsAppProvider
+  credentials String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  branch crm_branch @relation(fields: [branchId], references: [id])
+
+  @@index([tenantId])
+  @@map("crm_whatsapp_settings")
+}
+
+model crm_api_key {
+  id              String    @id @default(uuid())
+  tenantId        String
+  name            String
+  hashedKey       String    @unique
+  scopes          String[]  @default([])
+  lastUsedAt      DateTime?
+  createdByUserId String?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  createdBy crm_auth_user? @relation(fields: [createdByUserId], references: [id])
+
+  @@index([tenantId])
+  @@map("crm_api_key")
+}
+
+model crm_push_subscription {
+  id        String   @id @default(uuid())
+  userId    String
+  tenantId  String
+  endpoint  String
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, endpoint])
+  @@index([tenantId, userId])
+  @@map("crm_push_subscription")
+}
+
+// ============================================================
+// TICKETING MODULE — tkt_* tables
+// ============================================================
+
+model tkt_platform {
+  id           String   @id @default(uuid())
+  tenant_id    String
+  name         String
+  slug         String
+  code         String   // "01"-"05" used in ticket number generation
+  accent_color String   @default("#6b7280")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  user_platforms tkt_user_platform[]
+  tickets        tkt_ticket[]
+  counters       tkt_counter[]
+
+  @@unique([tenant_id, slug])
+  @@unique([tenant_id, name])
+  @@index([tenant_id])
+  @@map("tkt_platform")
+}
+
+model tkt_branch {
+  id            String   @id @default(uuid())
+  tenant_id     String
+  name          String
+  code          String   // e.g. "AMP"
+  branch_number String   // "01".."26" zero-padded, stable
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  user_branches tkt_user_branch[]
+  tickets       tkt_ticket[]
+  counters      tkt_counter[]
+
+  @@unique([tenant_id, branch_number])
+  @@unique([tenant_id, code])
+  @@index([tenant_id])
+  @@map("tkt_branch")
+}
+
+// Ticket-specific user profile (extends crm_auth_user via user_id FK)
+model tkt_user_profile {
+  user_id             String   @id
+  tenant_id           String
+  role                String   // "super_admin" | "platform_admin" | "user"
+  email_notifications Boolean  @default(true)
+  dark_theme          Boolean  @default(true)
+  activity_updates    Boolean  @default(true)
+  system_alerts       Boolean  @default(false)
+  audit_logs          Boolean  @default(false)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  platforms tkt_user_platform[]
+  branches  tkt_user_branch[]
+  tickets   tkt_ticket[]
+
+  @@index([tenant_id])
+  @@index([tenant_id, role])
+  @@map("tkt_user_profile")
+}
+
+model tkt_user_platform {
+  user_id     String
+  platform_id String
+
+  profile  tkt_user_profile @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  platform tkt_platform     @relation(fields: [platform_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, platform_id])
+  @@map("tkt_user_platform")
+}
+
+model tkt_user_branch {
+  user_id   String
+  branch_id String
+
+  profile tkt_user_profile @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  branch  tkt_branch       @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, branch_id])
+  @@map("tkt_user_branch")
+}
+
+model tkt_ticket {
+  id                String    @id @default(uuid())
+  ticket_number     String
+  tenant_id         String
+  branch_id         String
+  platform_id       String
+  user_id           String
+  issue_context     String
+  sub_type          String
+  fields            Json
+  status            String    @default("received") // received | in_progress | complete | rejected
+  admin_remark      String?
+  rejection_reason  String?
+  assigned_admin_id String?
+  completed_at      DateTime?
+  visible_until     DateTime? // completed_at + 7 days; filtered server-side
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  platform    tkt_platform           @relation(fields: [platform_id], references: [id])
+  branch      tkt_branch             @relation(fields: [branch_id], references: [id])
+  submitter   tkt_user_profile       @relation(fields: [user_id], references: [user_id])
+  attachments tkt_ticket_attachment[]
+  events      tkt_ticket_event[]
+
+  @@unique([tenant_id, ticket_number])
+  @@index([tenant_id, platform_id, status])
+  @@index([tenant_id, branch_id])
+  @@index([tenant_id, user_id])
+  @@index([tenant_id, status, visible_until])
+  @@map("tkt_ticket")
+}
+
+model tkt_ticket_attachment {
+  id            String   @id @default(uuid())
+  ticket_id     String
+  tenant_id     String
+  file_type     String   // "black_white" | "general" | "other"
+  original_name String
+  s3_key        String
+  mime_type     String?
+  size_bytes    Int?
+  uploaded_by   String
+  uploaded_at   DateTime @default(now())
+
+  ticket tkt_ticket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id, ticket_id])
+  @@map("tkt_ticket_attachment")
+}
+
+model tkt_ticket_event {
+  id         String   @id @default(uuid())
+  tenant_id  String
+  ticket_id  String
+  actor_id   String
+  type       String   // "status_change" | "comment" | "attachment_added" | "assigned" | "email_sent"
+  from_value String?
+  to_value   String?
+  payload    Json?
+  created_at DateTime @default(now())
+
+  ticket tkt_ticket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id, ticket_id, created_at])
+  @@map("tkt_ticket_event")
+}
+
+// Atomic counter per (tenant, YYMM, branch, platform) for ticket number generation
+model tkt_counter {
+  tenant_id   String
+  period      String   // "YYMM" e.g. "2604"
+  branch_id   String
+  platform_id String
+  value       Int      @default(0)
+  updated_at  DateTime @updatedAt
+
+  branch   tkt_branch   @relation(fields: [branch_id], references: [id])
+  platform tkt_platform @relation(fields: [platform_id], references: [id])
+
+  @@id([tenant_id, period, branch_id, platform_id])
+  @@map("tkt_counter")
 }

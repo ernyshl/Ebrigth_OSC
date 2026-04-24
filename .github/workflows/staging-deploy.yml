@@ -9,11 +9,23 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Deploy to staging server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 103.209.156.225
           username: deploy
           key: ${{ secrets.STAGING_SSH_KEY }}
-          script: /home/deploy/deploy.sh osc
-
+          command_timeout: 30m
+          script: |
+            set -e
+            cd /home/deploy/Ebrigth_OSC || (mkdir -p /home/deploy/Ebrigth_OSC && cd /home/deploy/Ebrigth_OSC && git init)
+            git remote set-url origin https://github.com/EbrightOD/Ebrigth_OSC.git || git remote add origin https://github.com/EbrightOD/Ebrigth_OSC.git
+            git fetch origin staging
+            git reset --hard origin/staging
+            export DATABASE_URL="${{ secrets.DATABASE_URL }}"
+            docker build --build-arg DATABASE_URL=$DATABASE_URL -t ebright-osc:latest .
+            docker rm -f ebright-osc-staging || true
+            docker run -d --name ebright-osc-staging -p 3000:3000 ebright-osc:latest
