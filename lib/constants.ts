@@ -53,6 +53,7 @@ export const ROLE_OPTIONS: Array<{ value: string; label: string }> = [
 
 export const CONTRACT_OPTIONS = [
   { value: "", label: "None" },
+  { value: "9 MONTH", label: "9 Month" },
   { value: "12 MONTH", label: "12 Month" },
   { value: "15 MONTH", label: "15 Month" },
   { value: "18 MONTH", label: "18 Month" },
