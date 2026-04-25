@@ -94,13 +94,13 @@ export async function POST(request: Request) {
     const normalizedNickName = nickName ? nickName.toUpperCase() : null;
     const normalizedHomeAddress = homeAddress ? homeAddress.toUpperCase() : null;
 
-    const existing = await prisma.branchStaff.findFirst({ where: { email } });
-    if (existing) {
+    const existingByEmail = await prisma.branchStaff.findFirst({ where: { email } });
+    if (existingByEmail) {
       return NextResponse.json({ error: 'Email already exists' }, { status: 409 });
     }
 
-    const dupId = await prisma.branchStaff.findFirst({ where: { employeeId } });
-    if (dupId) {
+    const existingByEmployeeId = await prisma.branchStaff.findFirst({ where: { employeeId } });
+    if (existingByEmployeeId) {
       return NextResponse.json({ error: 'Employee ID already exists' }, { status: 409 });
     }
 
