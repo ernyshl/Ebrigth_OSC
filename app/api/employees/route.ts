@@ -2,36 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession, requireRole } from '@/lib/auth';
 import { ADMIN_ROLES } from '@/lib/roles';
-
-// Position level code (pos2)
-function getPositionCode(role: string): string {
-  const r = role.toUpperCase();
-  if (r.includes('CEO')) return '11';
-  if (r.includes('HOD')) return '22';
-  if (r.includes('EXEC') || r.includes('BM') || r.startsWith('FT - COACH') || r.startsWith('PT - COACH') || r.includes('FT - COACH ') || r.includes('PT - COACH ')) return '33';
-  if (r.startsWith('FT - ') || r.startsWith('PT - ')) return '33';
-  if (r.includes('INT')) return '44';
-  return '33';
-}
-
-// Department code (pos1.1) from branch field
-function getDeptCode(branch: string): string {
-  const map: Record<string, string> = {
-    'HQ':  '01',
-    'OD':  '08',
-    'ACD': '03',
-    'HR':  '04',
-    'FNC': '05',
-    'FIN': '05',
-    'IOP': '06',
-    'MKT': '07',
-  };
-  return map[branch.toUpperCase()] ?? '09';
-}
-
-function buildEmployeeId(role: string, branch: string, seq: number): string {
-  return `${getPositionCode(role)}${getDeptCode(branch)}00${String(seq).padStart(2, '0')}`;
-}
+import { isValidEmployeeId } from '@/lib/employeeId';
 
 // Map BranchStaff DB row → Employee shape expected by the frontend
 function toEmployee(s: Record<string, unknown>) {
@@ -107,26 +78,31 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { fullName, email, phone, branch, role, gender, nickName, nric, dob,
+    const { employeeId, fullName, email, phone, branch, role, gender, nickName, nric, dob,
             homeAddress, contract, startDate, endDate, probation, rate,
             Emc_Number, Emc_Email, Emc_Relationship, Signed_Date, Emp_Hire_Date,
             Emp_Type, Emp_Status, Bank, Bank_Name, Bank_Account, University } = body;
 
-    if (!fullName || !email || !phone || !branch || !role) {
+    if (!fullName || !email || !phone || !branch || !role || !employeeId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+    if (!isValidEmployeeId(employeeId)) {
+      return NextResponse.json({ error: 'Employee ID must be exactly 8 digits' }, { status: 400 });
     }
 
     const normalizedFullName = fullName.toUpperCase();
     const normalizedNickName = nickName ? nickName.toUpperCase() : null;
     const normalizedHomeAddress = homeAddress ? homeAddress.toUpperCase() : null;
 
-    const existing = await prisma.branchStaff.findFirst({ where: { email } });
-    if (existing) {
+    const existingByEmail = await prisma.branchStaff.findFirst({ where: { email } });
+    if (existingByEmail) {
       return NextResponse.json({ error: 'Email already exists' }, { status: 409 });
     }
 
-    const count = await prisma.branchStaff.count();
-    const employeeId = buildEmployeeId(role, branch, count + 1);
+    const existingByEmployeeId = await prisma.branchStaff.findFirst({ where: { employeeId } });
+    if (existingByEmployeeId) {
+      return NextResponse.json({ error: 'Employee ID already exists' }, { status: 409 });
+    }
 
     const newStaff = await prisma.branchStaff.create({
       data: {
@@ -186,13 +162,15 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Employee ID is required' }, { status: 400 });
     }
 
-    let recalculatedEmployeeId: string | undefined;
-    if (branch !== undefined || role !== undefined) {
-      const current = await prisma.branchStaff.findUnique({ where: { id: parseInt(id) } });
-      if (current) {
-        const newBranch = branch ?? current.branch ?? 'HQ';
-        const newRole = role ?? current.role ?? '';
-        recalculatedEmployeeId = buildEmployeeId(newRole, newBranch, current.id);
+    if (employeeId !== undefined) {
+      if (!isValidEmployeeId(employeeId)) {
+        return NextResponse.json({ error: 'Employee ID must be exactly 8 digits' }, { status: 400 });
+      }
+      const existingByEmployeeId = await prisma.branchStaff.findFirst({
+        where: { employeeId, NOT: { id: parseInt(id) } },
+      });
+      if (existingByEmployeeId) {
+        return NextResponse.json({ error: 'Employee ID already exists' }, { status: 409 });
       }
     }
 
@@ -226,7 +204,7 @@ export async function PUT(request: Request) {
         ...(Bank_Name !== undefined && { bank_name: Bank_Name }),
         ...(Bank_Account !== undefined && { bank_account: Bank_Account }),
         ...(University !== undefined && { university: University }),
-        ...(recalculatedEmployeeId !== undefined && { employeeId: recalculatedEmployeeId }),
+        ...(employeeId !== undefined && { employeeId }),
       },
     });
 

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Employee ID — Option A vs Option B</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .label { @apply block text-sm font-medium text-gray-900 mb-1; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:600; }
+</style>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+
+<div class="max-w-7xl mx-auto">
+  <h1 class="text-3xl font-bold text-gray-900 mb-2">Employee ID Field — Mockup Comparison</h1>
+  <p class="text-gray-600 mb-8">Two design options for how the Employee ID is entered in the Add User form.</p>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <!-- ===================== OPTION A ===================== -->
+    <div class="bg-white rounded-lg shadow p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-2xl font-bold text-gray-800">Option A — Replace</h2>
+        <span class="badge bg-blue-100 text-blue-700">Pure manual entry</span>
+      </div>
+      <p class="text-sm text-gray-600 mb-6">Admin must pick the role code and type all 6 digits every time. No auto-generation.</p>
+
+      <div class="border border-gray-200 rounded-lg p-5 bg-gray-50">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Add User</h3>
+
+        <!-- Employee ID field -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-900 mb-1">
+            Employee ID <span class="text-red-500">*</span>
+          </label>
+          <div class="flex gap-2">
+            <select class="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white text-sm w-44">
+              <option value="">— Select role —</option>
+              <option value="11">11 — CEO</option>
+              <option value="22">22 — HOD</option>
+              <option value="33" selected>33 — EXEC</option>
+              <option value="44">44 — INTERN</option>
+              <option value="55">55 — BM</option>
+              <option value="66">66 — FT COACH</option>
+              <option value="77">77 — PT COACH</option>
+            </select>
+            <input
+              type="text"
+              maxlength="6"
+              placeholder="6 digits"
+              class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm tracking-widest font-mono"
+            />
+          </div>
+          <p class="text-xs text-gray-500 mt-1">8 digits total — first 2 from dropdown, last 6 entered manually.</p>
+        </div>
+
+        <!-- Other fields shown as muted placeholders -->
+        <div class="opacity-40 space-y-3 pt-3 border-t border-gray-200">
+          <div>
+            <label class="block text-sm font-medium text-gray-900 mb-1">Full Name</label>
+            <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" disabled />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-900 mb-1">Branch</label>
+              <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" disabled>
+                <option>HQ</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-900 mb-1">Role</label>
+              <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" disabled>
+                <option>EXEC</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-5 text-sm">
+        <p class="text-gray-700"><span class="font-semibold">Result for new user:</span> <code class="bg-gray-100 px-2 py-1 rounded font-mono text-blue-700">33______</code> → admin types <code class="bg-gray-100 px-2 py-1 rounded font-mono text-blue-700">33080012</code></p>
+        <p class="text-gray-700 mt-2"><span class="font-semibold">Branch info in ID?</span> ❌ Lost (admin chooses freely)</p>
+        <p class="text-gray-700 mt-1"><span class="font-semibold">Risk of duplicates?</span> ⚠️ Higher</p>
+      </div>
+    </div>
+
+    <!-- ===================== OPTION B ===================== -->
+    <div class="bg-white rounded-lg shadow p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-2xl font-bold text-gray-800">Option B — Override</h2>
+        <span class="badge bg-green-100 text-green-700">Auto-fill, editable</span>
+      </div>
+      <p class="text-sm text-gray-600 mb-6">Dropdown + 6 digits auto-fill from role/branch. Admin can override either part for custom IDs.</p>
+
+      <div class="border border-gray-200 rounded-lg p-5 bg-gray-50">
+        <h3 class="text-base font-semibold text-gray-900 mb-4">Add User</h3>
+
+        <!-- Employee ID field -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-900 mb-1">
+            Employee ID
+          </label>
+          <div class="flex gap-2">
+            <select class="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white text-sm w-44">
+              <option value="11">11 — CEO</option>
+              <option value="22">22 — HOD</option>
+              <option value="33" selected>33 — EXEC</option>
+              <option value="44">44 — INTERN</option>
+              <option value="55">55 — BM</option>
+              <option value="66">66 — FT COACH</option>
+              <option value="77">77 — PT COACH</option>
+            </select>
+            <input
+              type="text"
+              maxlength="6"
+              value="080012"
+              class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm tracking-widest font-mono bg-blue-50"
+            />
+          </div>
+          <p class="text-xs text-gray-500 mt-1">Auto-filled from branch + sequence. Edit if you need a custom ID.</p>
+        </div>
+
+        <!-- Other fields shown as muted placeholders -->
+        <div class="opacity-40 space-y-3 pt-3 border-t border-gray-200">
+          <div>
+            <label class="block text-sm font-medium text-gray-900 mb-1">Full Name</label>
+            <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" disabled />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-900 mb-1">Branch</label>
+              <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" disabled>
+                <option>OD</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-900 mb-1">Role</label>
+              <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" disabled>
+                <option>EXEC</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-5 text-sm">
+        <p class="text-gray-700"><span class="font-semibold">Result for new user:</span> <code class="bg-gray-100 px-2 py-1 rounded font-mono text-green-700">33080012</code> (auto-filled, admin can change)</p>
+        <p class="text-gray-700 mt-2"><span class="font-semibold">Branch info in ID?</span> ✅ Preserved (08 = OD)</p>
+        <p class="text-gray-700 mt-1"><span class="font-semibold">Risk of duplicates?</span> ✅ Lower</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Side-by-side comparison table -->
+  <div class="bg-white rounded-lg shadow p-6 mt-8">
+    <h2 class="text-xl font-bold text-gray-800 mb-4">Quick Comparison</h2>
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-gray-200 text-left text-gray-600">
+          <th class="py-2 pr-4"></th>
+          <th class="py-2 pr-4">Option A — Replace</th>
+          <th class="py-2">Option B — Override</th>
+        </tr>
+      </thead>
+      <tbody class="text-gray-800">
+        <tr class="border-b border-gray-100">
+          <td class="py-2 pr-4 font-medium">Typing required</td>
+          <td class="py-2 pr-4">Always (8 digits)</td>
+          <td class="py-2">Only when customizing</td>
+        </tr>
+        <tr class="border-b border-gray-100">
+          <td class="py-2 pr-4 font-medium">Auto-generation</td>
+          <td class="py-2 pr-4">❌ Removed</td>
+          <td class="py-2">✅ Kept as default</td>
+        </tr>
+        <tr class="border-b border-gray-100">
+          <td class="py-2 pr-4 font-medium">Branch info in ID</td>
+          <td class="py-2 pr-4">Lost</td>
+          <td class="py-2">Preserved</td>
+        </tr>
+        <tr class="border-b border-gray-100">
+          <td class="py-2 pr-4 font-medium">Duplicate risk</td>
+          <td class="py-2 pr-4">⚠️ Higher</td>
+          <td class="py-2">✅ Lower</td>
+        </tr>
+        <tr>
+          <td class="py-2 pr-4 font-medium">Matches your wording</td>
+          <td class="py-2 pr-4">✅ "manually" — exactly</td>
+          <td class="py-2">⚠️ Auto-fills, but you can override</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-6 text-center text-sm text-gray-500">
+    Open this file in your browser. Pick the option you want, then I'll write the spec.
+  </div>
+</div>
+
+</body>
+</html>
