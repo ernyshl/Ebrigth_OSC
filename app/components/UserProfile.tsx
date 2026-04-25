@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import EmployeeIdInput from "@/app/components/EmployeeIdInput";
+import { splitEmployeeId, composeEmployeeId, isValidSuffix, isValidEmployeeId } from "@/lib/employeeId";
+import { ROLE_CODES } from "@/lib/constants";
 
 interface UserData {
   id: string;
@@ -30,6 +33,9 @@ export default function UserProfile() {
   const [passwordMessage, setPasswordMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [empIdPrefix, setEmpIdPrefix] = useState("");
+  const [empIdSuffix, setEmpIdSuffix] = useState("");
+  const [empIdError, setEmpIdError] = useState("");
 
   useEffect(() => {
     fetchUserProfile();
@@ -60,6 +66,10 @@ export default function UserProfile() {
     setEditMode(true);
     if (userData) {
       setEditData({ ...userData });
+      const parts = splitEmployeeId(userData.employeeId || "");
+      setEmpIdPrefix(parts.prefix);
+      setEmpIdSuffix(parts.suffix);
+      setEmpIdError("");
     }
   };
 
@@ -67,6 +77,7 @@ export default function UserProfile() {
     setEditMode(false);
     if (userData) {
       setEditData({ ...userData });
+      setEmpIdError("");
     }
   };
 
@@ -78,20 +89,38 @@ export default function UserProfile() {
   };
 
   const handleSaveProfile = async () => {
-    if (!editData) return;
+    if (!editData || !userData) return;
+    const original = splitEmployeeId(userData.employeeId || "");
+    const idChanged = empIdPrefix !== original.prefix || empIdSuffix !== original.suffix;
+    if (idChanged) {
+      if (!empIdPrefix) { setEmpIdError("Select a role code"); return; }
+      if (!isValidSuffix(empIdSuffix)) { setEmpIdError("Enter exactly 6 digits"); return; }
+    }
+    setEmpIdError("");
     setSavingProfile(true);
     try {
+      const newEmployeeId = idChanged ? composeEmployeeId(empIdPrefix, empIdSuffix) : undefined;
+      const payload = newEmployeeId !== undefined
+        ? { ...editData, employeeId: newEmployeeId }
+        : editData;
       const response = await fetch("/api/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editData),
+        body: JSON.stringify(payload),
       });
-      
       if (response.ok) {
-        setUserData(editData);
+        const updated = newEmployeeId !== undefined
+          ? { ...editData, employeeId: newEmployeeId }
+          : editData;
+        setUserData(updated);
         setEditMode(false);
       } else {
-        setError("Failed to save profile changes");
+        const errBody = await response.json().catch(() => ({}));
+        if (response.status === 409 && errBody.error?.toLowerCase().includes('employee id')) {
+          setEmpIdError(errBody.error);
+        } else {
+          setError(errBody.error || "Failed to save profile changes");
+        }
       }
     } catch (err) {
       console.error("Error saving profile:", err);
@@ -229,18 +258,26 @@ export default function UserProfile() {
             
             {/* Employee ID */}
             <div className="bg-gray-50 p-4 rounded-lg">
-              <label className="text-sm font-semibold text-gray-600 mb-2 block">Employee ID</label>
               {editMode ? (
-                <input
-                  type="text"
-                  name="employeeId"
-                  value={editData?.employeeId || ""}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded"
-                  disabled
+                <EmployeeIdInput
+                  prefix={empIdPrefix}
+                  suffix={empIdSuffix}
+                  onPrefixChange={(v) => { setEmpIdPrefix(v); if (empIdError) setEmpIdError(""); }}
+                  onSuffixChange={(v) => { setEmpIdSuffix(v); if (empIdError) setEmpIdError(""); }}
+                  error={empIdError}
+                  warning={
+                    userData.employeeId &&
+                    isValidEmployeeId(userData.employeeId) &&
+                    !ROLE_CODES.includes(splitEmployeeId(userData.employeeId).prefix)
+                      ? "Existing ID has unrecognized role code"
+                      : undefined
+                  }
                 />
               ) : (
-                <p className="text-lg font-medium text-gray-900">{userData.employeeId}</p>
+                <>
+                  <label className="text-sm font-semibold text-gray-600 mb-2 block">Employee ID</label>
+                  <p className="text-lg font-medium text-gray-900">{userData.employeeId}</p>
+                </>
               )}
             </div>
 
