@@ -129,19 +129,6 @@ export default function EmployeeTable({
     }
   };
 
-
-  const handleRebuildIds = async () => {
-    if (!confirm("Rebuild all employee IDs based on current role and branch? This will update IDs for all employees.")) return;
-    try {
-      const res = await fetch("/api/employees/rebuild-ids", { method: "POST" });
-      const data = await res.json();
-      alert(data.message || "Done");
-      fetchEmployees();
-    } catch {
-      alert("Failed to rebuild IDs");
-    }
-  };
-
   const filteredEmployees = employees.filter((e) => {
     if (statusFilter === "all") return true;
     if (statusFilter === "Archived") return e.accessStatus === "ARCHIVED";
@@ -321,7 +308,7 @@ export default function EmployeeTable({
       )}
 
       {/* Summary */}
-      <div className="mt-6 p-4 bg-gray-50 rounded-lg flex items-start justify-between gap-4">
+      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
         <div>
           <p className="text-sm text-gray-600">
             Total Employees: <span className="font-bold text-gray-900">{employees.length}</span>
@@ -344,12 +331,6 @@ export default function EmployeeTable({
             </span>
           </p>
         </div>
-        <button
-          onClick={handleRebuildIds}
-          className="shrink-0 px-3 py-1.5 text-xs font-medium bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
-        >
-          Rebuild IDs
-        </button>
       </div>
     </div>
   );
