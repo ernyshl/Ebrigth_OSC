@@ -18,12 +18,8 @@ const nextConfig: NextConfig = {
     return config;
   },
 
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+  // typecheck and lint must pass for the build to succeed.
+  // Override only by exception, never by default.
   compress: true,
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
