@@ -5,7 +5,6 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-
 }
 
 // ============================================================
@@ -999,57 +998,55 @@ model tkt_ticket {
   @@index([tenant_id, platform_id, status])
   @@index([tenant_id, branch_id])
   @@index([tenant_id, user_id])
-  @@index([tenant_id, status, visible_until])
   @@map("tkt_ticket")
 }
 
 model tkt_ticket_attachment {
-  id            String   @id @default(uuid())
-  ticket_id     String
-  tenant_id     String
-  file_type     String   // "black_white" | "general" | "other"
-  original_name String
-  s3_key        String
-  mime_type     String?
-  size_bytes    Int?
-  uploaded_by   String
-  uploaded_at   DateTime @default(now())
-
-  ticket tkt_ticket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
-
-  @@index([tenant_id, ticket_id])
-  @@map("tkt_ticket_attachment")
-}
-
-model tkt_ticket_event {
-  id         String   @id @default(uuid())
-  tenant_id  String
-  ticket_id  String
-  actor_id   String
-  type       String   // "status_change" | "comment" | "attachment_added" | "assigned" | "email_sent"
-  from_value String?
-  to_value   String?
-  payload    Json?
+  id        String   @id @default(uuid())
+  ticket_id String
+  url       String
+  filename  String
+  size      Int
+  mime_type String
   created_at DateTime @default(now())
 
   ticket tkt_ticket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
 
-  @@index([tenant_id, ticket_id, created_at])
+  @@index([ticket_id])
+  @@map("tkt_ticket_attachment")
+}
+
+model tkt_ticket_event {
+  id        String   @id @default(uuid())
+  ticket_id String
+  event_type String
+  description String?
+  meta       Json?
+  created_at DateTime @default(now())
+
+  ticket tkt_ticket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+
+  @@index([ticket_id])
   @@map("tkt_ticket_event")
 }
 
-// Atomic counter per (tenant, YYMM, branch, platform) for ticket number generation
 model tkt_counter {
-  tenant_id   String
-  period      String   // "YYMM" e.g. "2604"
-  branch_id   String
-  platform_id String
-  value       Int      @default(0)
-  updated_at  DateTime @updatedAt
+  id            String   @id @default(uuid())
+  tenant_id     String
+  platform_id   String
+  branch_id     String?
+  counter_type  String   // "ticket", "daily", etc.
+  year          Int
+  month         Int?
+  day           Int?
+  current_count Int      @default(0)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
 
-  branch   tkt_branch   @relation(fields: [branch_id], references: [id])
   platform tkt_platform @relation(fields: [platform_id], references: [id])
+  branch   tkt_branch?  @relation(fields: [branch_id], references: [id])
 
-  @@id([tenant_id, period, branch_id, platform_id])
+  @@unique([tenant_id, platform_id, branch_id, counter_type, year, month, day])
+  @@index([tenant_id])
   @@map("tkt_counter")
 }

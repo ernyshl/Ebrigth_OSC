@@ -2,20 +2,45 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession, requireRole } from '@/lib/auth';
 import { MANAGEMENT_ROLES } from '@/lib/roles';
-import { z } from 'zod';
 
-const SaveScheduleSchema = z.object({
-  id:                 z.string().min(1),
-  branch:             z.string().min(1),
-  startDate:          z.string().min(1),
-  endDate:            z.string().min(1),
-  selections:         z.any(),
-  notes:              z.any(),
-  originalSelections: z.any(),
-  originalNotes:      z.any(),
-  status:             z.string().optional(),
-  originalAuthor:     z.string().optional(),
-});
+type ScheduleBody = {
+  id: string;
+  branch: string;
+  startDate: string;
+  endDate: string;
+  selections: unknown;
+  notes: unknown;
+  originalSelections: unknown;
+  originalNotes: unknown;
+  status?: string;
+  originalAuthor?: string;
+};
+
+function parseSchedule(raw: unknown): { ok: true; data: ScheduleBody } | { ok: false; error: string } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, error: 'Invalid JSON body' };
+  const b = raw as Record<string, unknown>;
+  if (typeof b.id !== 'string' || b.id.length === 0) return { ok: false, error: 'id is required' };
+  if (typeof b.branch !== 'string' || b.branch.length === 0) return { ok: false, error: 'branch is required' };
+  if (typeof b.startDate !== 'string' || b.startDate.length === 0) return { ok: false, error: 'startDate is required' };
+  if (typeof b.endDate !== 'string' || b.endDate.length === 0) return { ok: false, error: 'endDate is required' };
+  if (b.status !== undefined && typeof b.status !== 'string') return { ok: false, error: 'status must be a string' };
+  if (b.originalAuthor !== undefined && typeof b.originalAuthor !== 'string') return { ok: false, error: 'originalAuthor must be a string' };
+  return {
+    ok: true,
+    data: {
+      id:                 b.id,
+      branch:             b.branch,
+      startDate:          b.startDate,
+      endDate:            b.endDate,
+      selections:         b.selections,
+      notes:              b.notes,
+      originalSelections: b.originalSelections,
+      originalNotes:      b.originalNotes,
+      status:             b.status         as string | undefined,
+      originalAuthor:     b.originalAuthor as string | undefined,
+    },
+  };
+}
 
 // GET /api/schedules — return all schedules, newest first
 export async function GET() {
@@ -39,17 +64,17 @@ export async function POST(req: Request) {
   if (error) return error;
 
   try {
-    const parsed = SaveScheduleSchema.safeParse(await req.json());
-    if (!parsed.success) {
-      return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 400 });
+    const parsed = parseSchedule(await req.json());
+    if (!parsed.ok) {
+      return NextResponse.json({ success: false, error: parsed.error }, { status: 400 });
     }
     const body = parsed.data;
 
     const schedule = await prisma.manpowerSchedule.upsert({
       where:  { id: body.id },
       update: {
-        selections: body.selections,
-        notes:      body.notes,
+        selections: body.selections as any,
+        notes:      body.notes as any,
         status:     'Finalized',
       },
       create: {
@@ -57,10 +82,10 @@ export async function POST(req: Request) {
         branch:             body.branch,
         startDate:          body.startDate,
         endDate:            body.endDate,
-        selections:         body.selections,
-        notes:              body.notes,
-        originalSelections: body.originalSelections,
-        originalNotes:      body.originalNotes,
+        selections:         body.selections as any,
+        notes:              body.notes as any,
+        originalSelections: body.originalSelections as any,
+        originalNotes:      body.originalNotes as any,
         status:             body.status ?? 'Finalized',
         // originalAuthor comes from the verified session, not the request body
         originalAuthor:     session.user?.name ?? session.user?.email ?? 'Unknown',

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireSession, requireRole } from '@/lib/auth';
+import { requireSession, requireRole, assertSameBranch, canSeeAllBranches } from '@/lib/auth';
 import { ADMIN_ROLES } from '@/lib/roles';
 import { isValidEmployeeId } from '@/lib/employeeId';
 
@@ -43,7 +43,7 @@ function toEmployee(s: Record<string, unknown>) {
 }
 
 export async function GET(request: Request) {
-  const { error } = await requireSession();
+  const { session, error } = await requireSession();
   if (error) return error;
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search')?.toLowerCase() || '';
@@ -55,6 +55,15 @@ export async function GET(request: Request) {
   if (branch) where.branch = branch;
   if (role) where.role = role;
   if (accessStatus) where.accessStatus = accessStatus;
+
+  // Interim branch scoping: non-admin/HOD users are restricted to their own
+  // branch. This filters at the DB layer so unauthorized rows never load.
+  // Step 3 replaces this with scopedDb(session) once the schema gets a
+  // proper tenantId/branchId foreign key.
+  if (!canSeeAllBranches(session)) {
+    const userBranch = (session.user as { branchName?: string }).branchName;
+    where.branch = userBranch ?? '__none__';
+  }
 
   const staff = await prisma.branchStaff.findMany({ where, orderBy: { id: 'asc' } });
 
@@ -73,7 +82,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { error } = await requireRole(ADMIN_ROLES);
+  const { session, error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   try {
@@ -89,6 +98,9 @@ export async function POST(request: Request) {
     if (!isValidEmployeeId(employeeId)) {
       return NextResponse.json({ error: 'Employee ID must be exactly 8 digits' }, { status: 400 });
     }
+
+    const branchGuard = assertSameBranch(session, branch);
+    if (branchGuard) return branchGuard;
 
     const normalizedFullName = fullName.toUpperCase();
     const normalizedNickName = nickName ? nickName.toUpperCase() : null;
@@ -147,7 +159,7 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const { error } = await requireRole(ADMIN_ROLES);
+  const { session, error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   try {
@@ -161,6 +173,20 @@ export async function PUT(request: Request) {
     if (!id) {
       return NextResponse.json({ error: 'Employee ID is required' }, { status: 400 });
     }
+
+    if (branch !== undefined) {
+      const branchGuard = assertSameBranch(session, branch);
+      if (branchGuard) return branchGuard;
+    }
+    const existing = await prisma.branchStaff.findUnique({
+      where: { id: parseInt(id) },
+      select: { branch: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const idGuard = assertSameBranch(session, existing.branch);
+    if (idGuard) return idGuard;
 
     if (employeeId !== undefined) {
       if (!isValidEmployeeId(employeeId)) {
@@ -219,7 +245,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const { error } = await requireRole(ADMIN_ROLES);
+  const { session, error } = await requireRole(ADMIN_ROLES);
   if (error) return error;
 
   try {
@@ -229,6 +255,16 @@ export async function DELETE(request: Request) {
     if (!id) {
       return NextResponse.json({ error: 'Employee ID is required' }, { status: 400 });
     }
+
+    const existing = await prisma.branchStaff.findUnique({
+      where: { id: parseInt(id) },
+      select: { branch: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const idGuard = assertSameBranch(session, existing.branch);
+    if (idGuard) return idGuard;
 
     const deleted = await prisma.branchStaff.delete({ where: { id: parseInt(id) } });
 

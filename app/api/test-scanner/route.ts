@@ -49,7 +49,7 @@ export async function GET() {
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
 
-    let allEvents: HikvisionEvent[] = [];
+    const allEvents: HikvisionEvent[] = [];
     let currentPosition = 0;
     let isFetching = true;
     let safetyCounter = 0;
