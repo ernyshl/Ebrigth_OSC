@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/nextauth';
 import { NextResponse } from 'next/server';
 import type { Session } from 'next-auth';
-import { hasAnyRole, type Role } from '@/lib/roles';
+import { hasAnyRole, isAdmin, isHOD, type Role } from '@/lib/roles';
 
 export type AuthResult =
   | { session: Session; error: null }
@@ -34,4 +34,31 @@ export async function requireRole(allowed: readonly Role[]): Promise<AuthResult>
     };
   }
   return { session, error: null };
+}
+
+type SessionUser = { role?: unknown; branchName?: string | null };
+
+// Returns true when the caller's role is allowed to act across branches
+// (ADMIN, SUPER_ADMIN, HOD). Other roles are scoped to their own branch.
+export function canSeeAllBranches(session: { user?: SessionUser } | null): boolean {
+  const role = session?.user?.role;
+  return isAdmin(role) || isHOD(role);
+}
+
+// Returns a 403 NextResponse if the caller's role isn't allowed to act on
+// `targetBranch`. Returns null when the operation is permitted.
+//
+// Permitted roles for cross-branch ops: ADMIN, SUPER_ADMIN, HOD.
+// Other roles must have `targetBranch === session.user.branchName`.
+//
+// Interim helper. Step 3 replaces this with scopedDb(session) + can(...).
+export function assertSameBranch(
+  session: { user?: SessionUser } | null,
+  targetBranch: string | null | undefined,
+): NextResponse | null {
+  if (canSeeAllBranches(session)) return null;
+  if (targetBranch && targetBranch !== session?.user?.branchName) {
+    return NextResponse.json({ error: 'Forbidden: cross-branch operation' }, { status: 403 });
+  }
+  return null;
 }

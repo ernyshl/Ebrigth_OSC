@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import EmployeeTable from "@/app/components/EmployeeTable";
 import Sidebar from "@/app/components/Sidebar";
 import UserHeader from "@/app/components/UserHeader";
@@ -14,12 +15,12 @@ export default function DashboardPage() {
       <header className="bg-gradient-to-r from-blue-600 to-blue-800 text-white shadow-lg">
         <div className="flex justify-between items-center pl-14 pr-4 py-6">
           <div className="flex items-center gap-4">
-            <a
+            <Link
               href="/dashboards/hrms"
               className="bg-white/20 hover:bg-white/30 text-white px-3 py-2 rounded-lg transition-colors flex items-center gap-2"
             >
               ← Back
-            </a>
+            </Link>
             <div>
               <h1 className="text-3xl font-bold">HR Employee Management</h1>
               <p className="text-blue-100 mt-1">Super Admin Dashboard</p>

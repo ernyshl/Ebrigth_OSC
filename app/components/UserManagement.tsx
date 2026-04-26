@@ -193,7 +193,7 @@ export default function UserManagement({ userRole = "" }: UserManagementProps) {
     if (!editData) return;
     const uppercaseFields = ["fullName", "nickName", "homeAddress"];
     const normalized = uppercaseFields.includes(name) ? value.toUpperCase() : value;
-    let updates: Partial<User> = { [name]: normalized };
+    const updates: Partial<User> = { [name]: normalized };
     if (name === "Emp_Status") {
       updates.accessStatus = value === "Active" ? "AUTHORIZED" : value === "Inactive" ? "UNAUTHORIZED" : editData.accessStatus;
     } else if (name === "accessStatus") {
