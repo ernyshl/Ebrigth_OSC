@@ -9,7 +9,11 @@ const pool = new Pool({
 
 const AUTOCOUNT_API_URL =
   "https://payroll.autocountcloud.com/OpenAPILeave/GetLeaveTransactionList?CompanyId=XX51DTWxYwf2IB1rUIi1U7csyyvQcRb0ccaeGcWbjfnzzNMehxSqwz8z%2BpTfNVew";
-const AUTOCOUNT_TOKEN = "2HMQNPB7KFYO+2YFJNLGVZHRPWGDQQZHWGNDRCUUAWW=";
+const AUTOCOUNT_TOKEN = process.env.AUTOCOUNT_API_TOKEN || "";
+
+if (!AUTOCOUNT_TOKEN) {
+  console.error('[sync-medical-leave] AUTOCOUNT_API_TOKEN env var is not set');
+}
 
 interface AutoCountLeave {
   EmployeeCode: string;
