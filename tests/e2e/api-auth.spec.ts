@@ -38,3 +38,18 @@ test.describe('Users endpoint role gate', () => {
     expect(res.status()).toBe(403);
   });
 });
+
+test.describe('Branch-staff branch scoping', () => {
+  test('BRANCH_MANAGER (Ampang) does not see Klang staff', async ({ page, request }) => {
+    await login(page, 'ampang');
+
+    const cookies = await page.context().cookies();
+    const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+    const res = await request.get('/api/branch-staff', { headers: { cookie: cookieHeader } });
+    expect(res.ok()).toBeTruthy();
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : (data.staff ?? data.data ?? []);
+    expect(list.every((s: { branch?: string }) => s.branch === 'Ampang')).toBeTruthy();
+  });
+});
