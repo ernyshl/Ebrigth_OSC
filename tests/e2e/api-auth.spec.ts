@@ -53,3 +53,18 @@ test.describe('Branch-staff branch scoping', () => {
     expect(list.every((s: { branch?: string }) => s.branch === 'Ampang')).toBeTruthy();
   });
 });
+
+test.describe('Employees branch scoping', () => {
+  test('BRANCH_MANAGER (Klang) does not see Ampang employees', async ({ page, request }) => {
+    await login(page, 'klang');
+
+    const cookies = await page.context().cookies();
+    const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+    const res = await request.get('/api/employees', { headers: { cookie: cookieHeader } });
+    expect(res.ok()).toBeTruthy();
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : (data.employees ?? data.data ?? []);
+    expect(list.every((e: { branch?: string }) => e.branch === 'Klang')).toBeTruthy();
+  });
+});
