@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/nextauth";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth";
 import {
   getWorkingDaysForBranch,
   getTimeSlotsForDay,
@@ -99,6 +100,9 @@ function calculateHoursFromSelections(
  * and joining with BranchStaff for employee details (employeeId, rate, role/position).
  */
 export async function GET(request: Request) {
+  const auth = await requireSession();
+  if (auth.error) return auth.error;
+
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get("month"); // e.g. "2026-04"
