@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     // 🟢 UPDATED URL: Changed '/api/auth/sso' to '/api/sso'
     // This must match the folder you just created in the Inventory project
-    const targetUrl = `https://staging-inventory.ebright.my/api/sso?token=${token}`;
+    const targetUrl = `https://inventory.ebright.my/api/sso?token=${token}`;
     
     return NextResponse.redirect(targetUrl);
   } catch (error) {
