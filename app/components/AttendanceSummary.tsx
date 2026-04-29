@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef, useCallback } from "react";
 
-import { Users, UserCheck, LogOut, UserX, ArrowLeft, MapPin, RotateCcw, WifiOff, Loader2, ChevronDown, RefreshCw, CheckCircle2, AlertCircle, Clock, AlertTriangle, Info, Database, Search, X, ArrowUpDown, Wrench, ChevronRight } from "lucide-react";
+import { Users, UserCheck, LogOut, UserX, ArrowLeft, MapPin, RotateCcw, WifiOff, Loader2, ChevronDown, RefreshCw, CheckCircle2, AlertCircle, Clock, AlertTriangle, Info, Database, Search, X, ArrowUpDown, Wrench, ChevronRight, Calendar } from "lucide-react";
 import { motion } from "framer-motion";
 
 import Sidebar from "./Sidebar";
@@ -180,6 +180,19 @@ function getTodayStr(): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+// YYYY-MM-DD in Kuala Lumpur — matches the DB date column and <input type="date"> value.
+function todayKLStr(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+}
+
+// Pretty label for the date selector ("Mon, 27 Apr 2026")
+function prettyDateLabel(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-MY", {
+    weekday: "short", day: "2-digit", month: "short", year: "numeric", timeZone: "UTC",
+  });
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface BranchStaffMember {
@@ -209,6 +222,10 @@ export default function AttendanceSummary() {
   const [locations, setLocations] = useState<string[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string>("HQ");
   const [branchStaff, setBranchStaff] = useState<BranchStaffMember[]>([]);
+
+  // ── Date picker (defaults to today KL; auto-refresh only runs when on today) ──
+  const [selectedDate, setSelectedDate] = useState<string>(todayKLStr());
+  const isViewingToday = selectedDate === todayKLStr();
 
   // ── Search + sort ──────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -258,17 +275,19 @@ export default function AttendanceSummary() {
 
   // ── Poll /api/attendance-today every 5 seconds (reads from DB, written by office sync script) ──
   const fetchScans = useCallback(async () => {
-    // ── Midnight auto-reset ──────────────────────────────────────────────────
+    // ── Midnight auto-reset (only matters when user is on "today") ───────────
     const todayStr = getTodayStr();
     if (todayStr !== currentDateRef.current) {
       currentDateRef.current = todayStr;
       setLogs([]);
       setSeenScannerIds([]);
       setRawCount(null);
+      // If user was viewing "today", auto-advance to the new today.
+      if (selectedDate !== todayKLStr()) setSelectedDate(todayKLStr());
     }
 
     try {
-      const res = await fetch("/api/attendance-today");
+      const res = await fetch(`/api/attendance-today?date=${encodeURIComponent(selectedDate)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const dbRows: { date: string; empNo: string; empName: string; clockInTime: string; clockOutTime: string | null; scannerLocation: string | null }[] = await res.json();
 
@@ -304,13 +323,15 @@ export default function AttendanceSummary() {
     } catch {
       setScannerStatus("error");
     }
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => {
     fetchScans();
+    // Only poll for live updates when viewing today — historical dates don't change.
+    if (!isViewingToday) return;
     const interval = setInterval(fetchScans, 5000);
     return () => clearInterval(interval);
-  }, [fetchScans]);
+  }, [fetchScans, isViewingToday]);
 
   // ── Manual end-of-day reset ────────────────────────────────────────────────
   const handleReset = useCallback(() => {
@@ -413,30 +434,59 @@ export default function AttendanceSummary() {
               </div>
             </div>
 
-            {/* Row 2 — branch dropdown / reset */}
+            {/* Row 2 — branch dropdown + date picker / reset */}
             <div className="flex items-center justify-between gap-4 flex-wrap">
-              <label className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-blue-400 hover:shadow transition-all cursor-pointer group">
-                <MapPin className="w-4 h-4 text-blue-500 shrink-0" />
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Branch</span>
-                <select
-                  value={selectedLocation}
-                  onChange={e => setSelectedLocation(e.target.value)}
-                  className="text-sm font-semibold text-gray-900 bg-transparent focus:outline-none cursor-pointer pr-1 appearance-none"
-                >
-                  {locations.map(loc => (
-                    <option key={loc} value={loc}>{loc}</option>
-                  ))}
-                </select>
-                <ChevronDown className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
-              </label>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-blue-400 hover:shadow transition-all cursor-pointer group">
+                  <MapPin className="w-4 h-4 text-blue-500 shrink-0" />
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Branch</span>
+                  <select
+                    value={selectedLocation}
+                    onChange={e => setSelectedLocation(e.target.value)}
+                    className="text-sm font-semibold text-gray-900 bg-transparent focus:outline-none cursor-pointer pr-1 appearance-none"
+                  >
+                    {locations.map(loc => (
+                      <option key={loc} value={loc}>{loc}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                </label>
 
-              <button
-                onClick={handleReset}
-                className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-red-200 text-red-700 text-sm font-medium rounded-lg hover:bg-red-50 hover:border-red-300 transition-all"
-              >
-                <RotateCcw className="w-4 h-4" />
-                End of Day Reset
-              </button>
+                <label className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-blue-400 hover:shadow transition-all cursor-pointer group">
+                  <Calendar className="w-4 h-4 text-blue-500 shrink-0" />
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Date</span>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    max={todayKLStr()}
+                    onChange={e => setSelectedDate(e.target.value || todayKLStr())}
+                    className="text-sm font-semibold text-gray-900 bg-transparent focus:outline-none cursor-pointer"
+                  />
+                  {isViewingToday && (
+                    <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wide">Today</span>
+                  )}
+                </label>
+
+                {!isViewingToday && (
+                  <button
+                    onClick={() => setSelectedDate(todayKLStr())}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    Jump to today
+                  </button>
+                )}
+              </div>
+
+              {isViewingToday && (
+                <button
+                  onClick={handleReset}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-red-200 text-red-700 text-sm font-medium rounded-lg hover:bg-red-50 hover:border-red-300 transition-all"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  End of Day Reset
+                </button>
+              )}
             </div>
           </div>
         </header>
@@ -492,8 +542,11 @@ export default function AttendanceSummary() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-gray-600 leading-relaxed">
-                <span className="font-semibold text-gray-900">Live sync from office scanner.</span>
-                {" "}1st scan = <span className="font-semibold text-emerald-700">Check-In</span>. Subsequent scans update <span className="font-semibold text-orange-600">Check-Out</span>. Records reset at midnight.
+                <span className="font-semibold text-gray-900">
+                  {isViewingToday ? "Live sync from office scanner." : `Viewing ${prettyDateLabel(selectedDate)}.`}
+                </span>
+                {" "}1st scan = <span className="font-semibold text-emerald-700">Check-In</span>. Subsequent scans update <span className="font-semibold text-orange-600">Check-Out</span>.
+                {isViewingToday ? " Records reset at midnight." : " Historical view — read-only."}
               </p>
             </div>
             <div className="flex items-center gap-3 text-[11px] text-gray-500 shrink-0">
@@ -544,7 +597,9 @@ export default function AttendanceSummary() {
                 <div className="flex items-center gap-3">
                   <div className="w-1 h-6 bg-blue-500 rounded-full" />
                   <div>
-                    <h2 className="text-lg font-bold text-gray-900">Today&apos;s Attendance</h2>
+                    <h2 className="text-lg font-bold text-gray-900">
+                      {isViewingToday ? "Today's Attendance" : `Attendance · ${prettyDateLabel(selectedDate)}`}
+                    </h2>
                     <p className="text-xs text-gray-500 mt-0.5">
                       {selectedLocation} branch · {branchFilteredLogs.length} employee{branchFilteredLogs.length !== 1 ? "s" : ""}
                       {searchQuery && (
@@ -553,10 +608,16 @@ export default function AttendanceSummary() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
-                  <span>Auto-refresh · 5s</span>
-                </div>
+                {isViewingToday ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
+                    <span>Auto-refresh · 5s</span>
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                    Historical · Read-only
+                  </div>
+                )}
               </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -628,10 +689,12 @@ export default function AttendanceSummary() {
                                 ? "Connecting to scanner…"
                                 : scannerStatus === "error"
                                 ? "Scanner is offline"
-                                : `No scans yet at ${selectedLocation}`}
+                                : isViewingToday
+                                ? `No scans yet at ${selectedLocation}`
+                                : `No scans recorded at ${selectedLocation} on ${prettyDateLabel(selectedDate)}`}
                             </p>
                             <p className="text-xs text-gray-400 mt-1">
-                              {scannerStatus === "ok" && "Records will appear here as employees scan in."}
+                              {scannerStatus === "ok" && isViewingToday && "Records will appear here as employees scan in."}
                             </p>
                           </div>
                         </div>
@@ -739,8 +802,12 @@ export default function AttendanceSummary() {
               <div className="flex items-center gap-3">
                 <div className="w-1 h-6 bg-red-500 rounded-full" />
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">Missing Today</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">{selectedLocation} branch · Active staff not yet scanned</p>
+                  <h2 className="text-lg font-bold text-gray-900">
+                    {isViewingToday ? "Missing Today" : `Missing on ${prettyDateLabel(selectedDate)}`}
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {selectedLocation} branch · {isViewingToday ? "Active staff not yet scanned" : "Active staff with no scan that day"}
+                  </p>
                 </div>
               </div>
               {missingEmployees.length > 0 && (
@@ -758,7 +825,11 @@ export default function AttendanceSummary() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-900">All clear at {selectedLocation}</p>
-                  <p className="text-xs text-gray-500 mt-1">Every active staff member has scanned in today.</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {isViewingToday
+                      ? "Every active staff member has scanned in today."
+                      : `Every active staff member scanned on ${prettyDateLabel(selectedDate)}.`}
+                  </p>
                 </div>
               </div>
             ) : (
