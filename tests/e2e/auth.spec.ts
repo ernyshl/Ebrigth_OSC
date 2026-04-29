@@ -15,15 +15,15 @@ test.describe('Authentication smoke', () => {
     await expect(page.getByText('Locked', { exact: false })).toHaveCount(0);
   });
 
-  test('BRANCH_MANAGER (Ampang) logs in and sees only HRMS unlocked', async ({ page }) => {
+  test('BRANCH_MANAGER (Ampang) logs in and sees HRMS and Inventory unlocked', async ({ page }) => {
     await login(page, 'ampang');
     await expect(page).toHaveURL(/\/home/);
 
-    // HRMS card should not show the Locked pill
+    // HRMS and Inventory cards should not show the Locked pill
     const hrmsCard = page.locator('a, div').filter({ hasText: 'HRMS' }).first();
     await expect(hrmsCard).toBeVisible();
 
-    // The other 6 modules should each show a Locked pill
-    await expect(page.getByText('Locked', { exact: false })).toHaveCount(6);
+    // The other 5 modules should each show a Locked pill
+    await expect(page.getByText('Locked', { exact: false })).toHaveCount(5);
   });
 });
