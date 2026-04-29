@@ -1,15 +1,15 @@
 FROM node:20-alpine
 WORKDIR /app
-RUN apk add --no-cache openssl
-COPY package*.json ./
-RUN npm ci
-COPY prisma ./prisma/
-RUN npx prisma generate
-COPY . .
-RUN npm run build
-RUN addgroup -g 1001 -S nodejs && \
+RUN apk add --no-cache openssl && \
+    addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001 && \
-    chown -R nodejs:nodejs /app
+    chown nodejs:nodejs /app
 USER nodejs
+COPY --chown=nodejs:nodejs package*.json ./
+RUN npm ci
+COPY --chown=nodejs:nodejs prisma ./prisma/
+RUN npx prisma generate
+COPY --chown=nodejs:nodejs . .
+RUN npm run build
 EXPOSE 3000
 CMD ["npm", "start"]
