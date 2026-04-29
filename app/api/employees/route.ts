@@ -92,11 +92,18 @@ export async function POST(request: Request) {
             Emc_Number, Emc_Email, Emc_Relationship, Signed_Date, Emp_Hire_Date,
             Emp_Type, Emp_Status, Bank, Bank_Name, Bank_Account, University } = body;
 
-    if (!fullName || !email || !phone || !branch || !role || !employeeId) {
+    if (!fullName || !email || !phone || !branch || !role) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-    if (!isValidEmployeeId(employeeId)) {
-      return NextResponse.json({ error: 'Employee ID must be exactly 8 digits' }, { status: 400 });
+    // Employee ID is optional. If provided, validate format and uniqueness.
+    if (employeeId !== undefined && employeeId !== null && employeeId !== '') {
+      if (!isValidEmployeeId(employeeId)) {
+        return NextResponse.json({ error: 'Employee ID must be exactly 8 digits' }, { status: 400 });
+      }
+      const existingByEmployeeId = await prisma.branchStaff.findFirst({ where: { employeeId } });
+      if (existingByEmployeeId) {
+        return NextResponse.json({ error: 'Employee ID already exists' }, { status: 409 });
+      }
     }
 
     const branchGuard = assertSameBranch(session, branch);
@@ -109,11 +116,6 @@ export async function POST(request: Request) {
     const existingByEmail = await prisma.branchStaff.findFirst({ where: { email } });
     if (existingByEmail) {
       return NextResponse.json({ error: 'Email already exists' }, { status: 409 });
-    }
-
-    const existingByEmployeeId = await prisma.branchStaff.findFirst({ where: { employeeId } });
-    if (existingByEmployeeId) {
-      return NextResponse.json({ error: 'Employee ID already exists' }, { status: 409 });
     }
 
     const newStaff = await prisma.branchStaff.create({

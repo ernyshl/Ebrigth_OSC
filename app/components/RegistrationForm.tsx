@@ -79,8 +79,10 @@ export default function RegistrationForm({
     if (!formData.phone.trim()) newErrors.phone = "Phone is required";
     if (!isValidPhone(formData.phone)) newErrors.phone = "Invalid phone format";
 
-    if (!empIdPrefix) newErrors.employeeId = "Select a role code";
-    else if (!isValidSuffix(empIdSuffix)) newErrors.employeeId = "Enter exactly 6 digits";
+    // Employee ID is optional, but if a prefix is picked, the suffix must be valid
+    if (empIdPrefix && !isValidSuffix(empIdSuffix)) {
+      newErrors.employeeId = "Enter exactly 6 digits";
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -125,7 +127,11 @@ export default function RegistrationForm({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ ...formData, employeeId: composeEmployeeId(empIdPrefix, empIdSuffix) }),
+        body: JSON.stringify(
+          empIdPrefix && isValidSuffix(empIdSuffix)
+            ? { ...formData, employeeId: composeEmployeeId(empIdPrefix, empIdSuffix) }
+            : formData
+        ),
       });
 
       if (!response.ok) {
@@ -376,6 +382,7 @@ export default function RegistrationForm({
                 onSuffixChange={(v) => { setEmpIdSuffix(v); if (errors.employeeId) setErrors((p) => ({ ...p, employeeId: "" })); }}
                 error={errors.employeeId}
                 disabled={submitting || isLoading}
+                required={false}
               />
             </div>
 
@@ -592,15 +599,15 @@ export default function RegistrationForm({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-1">
-                Emergency Contact Email
+                Emergency Contact Name
               </label>
               <input
-                type="email"
+                type="text"
                 name="Emc_Email"
                 value={formData.Emc_Email}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                placeholder="Enter emergency contact email"
+                placeholder="Enter emergency contact name"
                 disabled={submitting || isLoading}
               />
             </div>
