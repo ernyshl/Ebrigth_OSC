@@ -52,3 +52,27 @@ describe('TRAINING_EDIT_ROLES', () => {
     expect(TRAINING_EDIT_ROLES).not.toContain(ROLES.HR);
   });
 });
+
+import { canSeeAllBranches } from '@/lib/auth';
+
+describe('canSeeAllBranches', () => {
+  const make = (role: string) => ({ user: { role, branchName: null } });
+
+  it('returns true for SUPER_ADMIN, ADMIN, HOD, HR, ACADEMY', () => {
+    expect(canSeeAllBranches(make('SUPER_ADMIN'))).toBe(true);
+    expect(canSeeAllBranches(make('ADMIN'))).toBe(true);
+    expect(canSeeAllBranches(make('HOD'))).toBe(true);
+    expect(canSeeAllBranches(make('HR'))).toBe(true);
+    expect(canSeeAllBranches(make('ACADEMY'))).toBe(true);
+  });
+
+  it('returns false for BRANCH_MANAGER and other employee roles', () => {
+    expect(canSeeAllBranches(make('BRANCH_MANAGER'))).toBe(false);
+    expect(canSeeAllBranches(make('Full_Time'))).toBe(false);
+    expect(canSeeAllBranches(make('Part_Time'))).toBe(false);
+  });
+
+  it('returns false for null session', () => {
+    expect(canSeeAllBranches(null)).toBe(false);
+  });
+});

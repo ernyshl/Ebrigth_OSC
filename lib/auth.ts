@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/nextauth';
 import { NextResponse } from 'next/server';
 import type { Session } from 'next-auth';
-import { hasAnyRole, isAdmin, isHOD, isHR, type Role } from '@/lib/roles';
+import { hasAnyRole, isAdmin, isHOD, isHR, isAcademy, type Role } from '@/lib/roles';
 
 export type AuthResult =
   | { session: Session; error: null }
@@ -42,7 +42,7 @@ type SessionUser = { role?: unknown; branchName?: string | null };
 // (ADMIN, SUPER_ADMIN, HOD, HR). Other roles are scoped to their own branch.
 export function canSeeAllBranches(session: { user?: SessionUser } | null): boolean {
   const role = session?.user?.role;
-  return isAdmin(role) || isHOD(role) || isHR(role);
+  return isAdmin(role) || isHOD(role) || isHR(role) || isAcademy(role);
 }
 
 // Returns a 403 NextResponse if the caller's role isn't allowed to act on
