@@ -204,86 +204,63 @@ async function processScannerEvents(
       });
       console.log(`[scanner-sync][${scanner.id}] ✅ Created — ${empName}  in: ${clockInTime}  loc: ${scanner.location}`);
 
-      // Send clock-in notification
+      // Fire-and-forget the clock-in notification — never block the sync loop
+      // on SMTP. The DB update for clockInEmailSent only happens on success.
       if (empEmail) {
-        try {
-          await sendClockInEmail(empEmail, empName, clockInTime);
-          await prisma.attendanceLog.update({
+        void sendClockInEmail(empEmail, empName, clockInTime)
+          .then(() => prisma.attendanceLog.update({
             where: { date_empNo: { date: today, empNo } },
             data:  { clockInEmailSent: true },
-          });
-        } catch (e) {
-          console.error(`[scanner-sync][${scanner.id}] Clock-in email failed (${empName}):`, (e as Error).message);
-        }
+          }))
+          .catch(e => console.error(`[scanner-sync][${scanner.id}] Clock-in email failed (${empName}):`, (e as Error).message));
       } else {
         console.warn(`[scanner-sync][${scanner.id}] ⚠ No email for ${empName} (empNo: ${empNo}) — clock-in email skipped. Add email to BranchStaff.`);
       }
 
-      // If the same fetch batch already contains a later scan, handle clock-out now
+      // If the same fetch batch already contains a later scan, record the clock-out
+      // (DB write happens immediately; email is fire-and-forget).
       if (hasClockOut && clockOutTime) {
+        await prisma.attendanceLog.update({
+          where: { date_empNo: { date: today, empNo } },
+          data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: false },
+        });
         if (empEmail) {
-          try {
-            await sendClockOutEmail(empEmail, empName, clockOutTime);
-            console.log(`[scanner-sync][${scanner.id}] 🔴 Same-batch out — ${empName}  out: ${clockOutTime}`);
-            await prisma.attendanceLog.update({
+          void sendClockOutEmail(empEmail, empName, clockOutTime)
+            .then(() => prisma.attendanceLog.update({
               where: { date_empNo: { date: today, empNo } },
-              data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: true },
-            });
-          } catch (e) {
-            console.error(`[scanner-sync][${scanner.id}] Clock-out email failed (${empName}):`, (e as Error).message);
-            await prisma.attendanceLog.update({
-              where: { date_empNo: { date: today, empNo } },
-              data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: false },
-            });
-          }
+              data:  { clockOutEmailSent: true },
+            }))
+            .catch(e => console.error(`[scanner-sync][${scanner.id}] Clock-out email failed (${empName}):`, (e as Error).message));
         } else {
           console.warn(`[scanner-sync][${scanner.id}] ⚠ No email for ${empName} (empNo: ${empNo}) — clock-out email skipped.`);
-          await prisma.attendanceLog.update({
-            where: { date_empNo: { date: today, empNo } },
-            data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: false },
-          });
         }
       }
 
     } else {
-      // ── Record exists — catch up on anything that was missed ───────────
+      // ── Record exists — only update clock-out if a new (later) scan has appeared.
+      // Clock-in email retries are intentionally NOT performed: when SMTP is
+      // down or rate-limited, retries every 10s create a storm that blocks
+      // the sync loop and hides new scans from the dashboard. Clock-in emails
+      // are best-effort on first sight; missed ones can be re-sent manually.
 
-      // Retry clock-in email if it never sent (e.g. SMTP was down on first run)
-      if (!existing.clockInEmailSent && empEmail) {
-        try {
-          await sendClockInEmail(empEmail, empName, existing.clockInTime);
-          await prisma.attendanceLog.update({
-            where: { date_empNo: { date: today, empNo } },
-            data:  { clockInEmailSent: true },
-          });
-        } catch (e) {
-          console.error(`[scanner-sync][${scanner.id}] Clock-in email retry failed (${empName}):`, (e as Error).message);
-        }
-      }
-
-      // Update clock-out if a new (later) scan has appeared since last run
       if (hasClockOut && last.serialNo !== existing.clockOutSerialNo && clockOutTime) {
+        // Persist the clock-out time immediately, regardless of email outcome.
+        await prisma.attendanceLog.update({
+          where: { date_empNo: { date: today, empNo } },
+          data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: false },
+        });
+        console.log(`[scanner-sync][${scanner.id}] 🔴 Updated out — ${empName}  out: ${clockOutTime}`);
+
+        // Fire-and-forget the clock-out email; mark sent only on success.
         if (empEmail) {
-          try {
-            await sendClockOutEmail(empEmail, empName, clockOutTime);
-            console.log(`[scanner-sync][${scanner.id}] 🔴 Updated out — ${empName}  out: ${clockOutTime}`);
-            await prisma.attendanceLog.update({
+          void sendClockOutEmail(empEmail, empName, clockOutTime)
+            .then(() => prisma.attendanceLog.update({
               where: { date_empNo: { date: today, empNo } },
-              data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: true },
-            });
-          } catch (e) {
-            console.error(`[scanner-sync][${scanner.id}] Clock-out email failed (${empName}):`, (e as Error).message);
-            await prisma.attendanceLog.update({
-              where: { date_empNo: { date: today, empNo } },
-              data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: false },
-            });
-          }
+              data:  { clockOutEmailSent: true },
+            }))
+            .catch(e => console.error(`[scanner-sync][${scanner.id}] Clock-out email failed (${empName}):`, (e as Error).message));
         } else {
           console.warn(`[scanner-sync][${scanner.id}] ⚠ No email for ${empName} (empNo: ${empNo}) — clock-out email skipped.`);
-          await prisma.attendanceLog.update({
-            where: { date_empNo: { date: today, empNo } },
-            data:  { clockOutTime, clockOutSerialNo: last.serialNo, clockOutEmailSent: false },
-          });
         }
       }
     }

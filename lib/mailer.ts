@@ -7,12 +7,19 @@ import nodemailer, { type SendMailOptions } from 'nodemailer';
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT) || 465,
-  secure: true,            // port 465 = SSL
+  secure: false,           // port 587 = STARTTLS
   pool: true,              // keep the SMTP connection open
   maxConnections: 1,       // Gmail prefers a single connection per account
   maxMessages: 100,        // re-auth after 100 messages (well under Gmail's daily cap)
   rateDelta: 1000,         // window for rateLimit, in ms
   rateLimit: 3,            // max 3 messages per second — safe for Gmail
+  // Fast timeouts: a single bad email must not block the scanner-sync loop
+  // for 30+ seconds. With these, a connection failure surfaces in <=5s and
+  // immediately trips the cooldown (see safeSend below) so subsequent retries
+  // bail instantly instead of each waiting for their own timeout.
+  connectionTimeout: 5_000,  // TCP connect must complete within 5s
+  greetingTimeout:   5_000,  // SMTP greeting must arrive within 5s
+  socketTimeout:    10_000,  // overall send must complete within 10s
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -31,10 +38,24 @@ let cooldownLogged = false;
 
 function isRateLimitOrAuthError(err: unknown): boolean {
   const e = err as { code?: string; responseCode?: number; message?: string };
+  // Auth / rate-limit errors from Gmail
   if (e?.code === 'EAUTH') return true;
   if (e?.responseCode === 454 || e?.responseCode === 535) return true;
+  // Network errors — also trip cooldown so we don't burn 30s per retry
+  // when the SMTP host is unreachable / slow / refusing connections.
+  if (
+    e?.code === 'ETIMEDOUT' ||
+    e?.code === 'ECONNECTION' ||
+    e?.code === 'ECONNREFUSED' ||
+    e?.code === 'ECONNRESET' ||
+    e?.code === 'ESOCKET'
+  ) return true;
   const msg = (e?.message ?? '').toLowerCase();
-  return msg.includes('too many login') || msg.includes('invalid login') || msg.includes('454');
+  return msg.includes('too many login')
+      || msg.includes('invalid login')
+      || msg.includes('454')
+      || msg.includes('etimedout')
+      || msg.includes('econnrefused');
 }
 
 function fmtRemaining(ms: number): string {
