@@ -623,6 +623,15 @@ export default function UserManagement({ userRole = "" }: UserManagementProps) {
                     </div>
                   </section>
 
+                  {/* Training */}
+                  <section>
+                    <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b pb-2 mb-4">Training</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {field("Training Start Date", selectedUser.trainingStartDate)}
+                      {field("Training End Date", selectedUser.trainingEndDate)}
+                    </div>
+                  </section>
+
                   {/* Emergency Contact */}
                   <section>
                     <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b pb-2 mb-4">Emergency Contact</h4>
