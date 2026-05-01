@@ -17,10 +17,20 @@ import {
   SELECT_ARROW_WHITE, SELECT_ARROW_DARK
 } from "@/lib/manpowerUtils";
 import { isBranchManager } from "@/lib/roles";
+import { isInTraining } from "@/lib/training";
 
+function nameWithBadge(name: string, training?: { start?: string; end?: string }) {
+  const inWindow = isInTraining(training?.start, training?.end);
+  if (!inWindow) return name;
+  return (
+    <span title={`In training: ${training?.start} → ${training?.end}`}>
+      {name} 🎓
+    </span>
+  );
+}
 
 // --- HELPER COMPONENT: SUMMARY TABLE ---
-const SummaryTable = ({ title, data }: { title: string, data: any[] }) => {
+const SummaryTable = ({ title, data, trainingMap = {} }: { title: string, data: any[], trainingMap?: Record<string, { start?: string; end?: string }> }) => {
   const formatTime = (d: number) => {
     const h = Math.floor(d);
     const m = Math.round((d - h) * 60);
@@ -50,7 +60,7 @@ const SummaryTable = ({ title, data }: { title: string, data: any[] }) => {
               return (
                 <tr key={row.name} className="even:bg-slate-50 hover:bg-slate-100 transition-colors">
                   <td className="border border-slate-300 px-3 py-3 text-center font-bold text-slate-500">{index + 1}</td>
-                  <td className="border border-slate-300 px-3 py-3 font-black text-slate-800">{row.name}</td>
+                  <td className="border border-slate-300 px-3 py-3 font-black text-slate-800">{nameWithBadge(row.name, trainingMap[row.name])}</td>
                   {[c, e, t].map((time, i) => (
                     <td key={i} className={`border border-slate-300 px-2 py-3 ${i === 2 ? 'bg-blue-50/50' : ''}`}>
                       <div className="flex flex-row gap-4 items-center justify-center">
@@ -96,6 +106,7 @@ function PlanNewWeekPage() {
   
   const [branchStaffData, setBranchStaffData] = useState<Record<string, string[]>>({});
   const [branchManagerData, setBranchManagerData] = useState<Record<string, string[]>>({});
+  const [trainingMap, setTrainingMap] = useState<Record<string, { start?: string; end?: string }>>({});
   const [columnReplacementBranch, setColumnReplacementBranch] = useState<Record<string, string>>({});
   const [managerReplacementBranch, setManagerReplacementBranch] = useState<Record<string, string>>({});
   const [selectedDay, setSelectedDay] = useState<string>("");
@@ -167,6 +178,7 @@ function PlanNewWeekPage() {
     if (!Array.isArray(staffList)) return;
     const grouped: Record<string, string[]> = {};
     const managers: Record<string, string[]> = {};
+    const tmap: Record<string, { start?: string; end?: string }> = {};
     staffList.forEach((s: any) => {
       if (!s.branch) return;
       if (!grouped[s.branch]) grouped[s.branch] = [];
@@ -175,9 +187,13 @@ function PlanNewWeekPage() {
         if (!managers[s.branch]) managers[s.branch] = [];
         managers[s.branch].push(s.name);
       }
+      if (s.trainingStartDate || s.trainingEndDate) {
+        tmap[s.name] = { start: s.trainingStartDate ?? undefined, end: s.trainingEndDate ?? undefined };
+      }
     });
     setBranchStaffData(grouped);
     setBranchManagerData(managers);
+    setTrainingMap(tmap);
   };
 
   useEffect(() => { fetchStaff(); }, []);
@@ -664,7 +680,7 @@ function PlanNewWeekPage() {
                                         const isDisabled = isConflict || isAssignedAsStaff;
                                         return (
                                           <option key={e} value={e} disabled={isDisabled}>
-                                            {isConflict ? `${e} (at ${conflictBranch})` : isAssignedAsStaff ? `${e} (assigned as staff)` : e}
+                                            {isConflict ? `${e} (at ${conflictBranch})` : isAssignedAsStaff ? `${e} (assigned as staff)` : `${e}${isInTraining(trainingMap[e]?.start, trainingMap[e]?.end) ? ' 🎓' : ''}`}
                                           </option>
                                         );
                                       })}
@@ -715,7 +731,7 @@ function PlanNewWeekPage() {
                                             const isConflict = !!conflictBranch;
                                             return (
                                               <option key={e} value={e} disabled={usedInCol || isConflict} className="text-slate-800 font-bold">
-                                                {isConflict ? `${e} (at ${conflictBranch})` : e}
+                                                {isConflict ? `${e} (at ${conflictBranch})` : `${e}${isInTraining(trainingMap[e]?.start, trainingMap[e]?.end) ? ' 🎓' : ''}`}
                                               </option>
                                             );
                                           })}
@@ -739,7 +755,7 @@ function PlanNewWeekPage() {
                 );
               })()}
 
-              <SummaryTable title="Weekly Hours Summary" data={calculateStaffHours()} />
+              <SummaryTable title="Weekly Hours Summary" data={calculateStaffHours()} trainingMap={trainingMap} />
 
               {!isLocked && (
                 <div className="mt-16 text-center pb-10">
