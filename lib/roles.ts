@@ -18,10 +18,12 @@ export const ROLES = {
   ADMIN:          "ADMIN",
   BRANCH_MANAGER: "BRANCH_MANAGER",
   HOD:            "HOD",
+  HR:             "HR",
   EXECUTIVE:      "EXECUTIVE",
   INTERN:         "INTERN",
   FULL_TIME:      "Full_Time",
   PART_TIME:      "Part_Time",
+  ACADEMY:        "ACADEMY",
 } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES];
@@ -35,10 +37,12 @@ export const ROLE_VALUES = [
   ROLES.ADMIN,
   ROLES.BRANCH_MANAGER,
   ROLES.HOD,
+  ROLES.HR,
   ROLES.EXECUTIVE,
   ROLES.INTERN,
   ROLES.FULL_TIME,
   ROLES.PART_TIME,
+  ROLES.ACADEMY,
 ] as const;
 
 // Accepts common drift (case, underscores vs. hyphens, stray whitespace) and
@@ -60,6 +64,7 @@ export function normalizeRole(raw: unknown): Role | null {
     BRANCHMANAGER:  ROLES.BRANCH_MANAGER,
     BM:             ROLES.BRANCH_MANAGER,
     HOD:            ROLES.HOD,
+    HR:             ROLES.HR,
     EXECUTIVE:      ROLES.EXECUTIVE,
     EXEC:           ROLES.EXECUTIVE,
     INTERN:         ROLES.INTERN,
@@ -68,22 +73,30 @@ export function normalizeRole(raw: unknown): Role | null {
     FULLTIME:       ROLES.FULL_TIME,
     PART_TIME:      ROLES.PART_TIME,
     PARTTIME:       ROLES.PART_TIME,
+    ACADEMY:        ROLES.ACADEMY,
   };
   return aliases[key] ?? null;
 }
 
 // ─── Role groupings ──────────────────────────────────────────────────────────
 
-export const ADMIN_ROLES: readonly Role[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
+export const ADMIN_ROLES: readonly Role[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR];
 
 export const MANAGEMENT_ROLES: readonly Role[] = [
   ROLES.SUPER_ADMIN,
   ROLES.ADMIN,
   ROLES.BRANCH_MANAGER,
   ROLES.HOD,
+  ROLES.HR,
 ];
 
 export const EMPLOYEE_ROLES: readonly Role[] = [ROLES.PART_TIME, ROLES.FULL_TIME];
+
+export const TRAINING_EDIT_ROLES: readonly Role[] = [
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.ACADEMY,
+];
 
 // ─── Predicates ──────────────────────────────────────────────────────────────
 
@@ -96,10 +109,12 @@ export const isSuperAdmin    = (raw: unknown) => hasRole(raw, [ROLES.SUPER_ADMIN
 export const isAdmin         = (raw: unknown) => hasRole(raw, ADMIN_ROLES);
 export const isBranchManager = (raw: unknown) => hasRole(raw, [ROLES.BRANCH_MANAGER]);
 export const isHOD           = (raw: unknown) => hasRole(raw, [ROLES.HOD]);
+export const isHR            = (raw: unknown) => hasRole(raw, [ROLES.HR]);
 export const isExecutive     = (raw: unknown) => hasRole(raw, [ROLES.EXECUTIVE]);
 export const isIntern        = (raw: unknown) => hasRole(raw, [ROLES.INTERN]);
 export const isFullTime      = (raw: unknown) => hasRole(raw, [ROLES.FULL_TIME]);
 export const isPartTime      = (raw: unknown) => hasRole(raw, [ROLES.PART_TIME]);
+export const isAcademy       = (raw: unknown) => hasRole(raw, [ROLES.ACADEMY]);
 export const isEmployee      = (raw: unknown) => hasRole(raw, EMPLOYEE_ROLES);
 export const isManagement    = (raw: unknown) => hasRole(raw, MANAGEMENT_ROLES);
 

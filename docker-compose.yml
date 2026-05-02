@@ -1,0 +1,13 @@
+services:
+  osc:
+    build: .
+    ports:
+      - "3003:3000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - ebright-net
+
+networks:
+  ebright-net:

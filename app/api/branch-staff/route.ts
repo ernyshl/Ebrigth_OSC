@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSession, requireRole } from "@/lib/auth";
-import { MANAGEMENT_ROLES } from "@/lib/roles";
+import { requireSession, requireRole, assertSameBranch, canSeeAllBranches } from "@/lib/auth";
+import { MANAGEMENT_ROLES, hasAnyRole } from "@/lib/roles";
 
-export async function GET() {
-  const { error } = await requireSession();
+export async function GET(request: Request) {
+  const { session, error } = await requireSession();
   if (error) return error;
 
   const BRANCH_CODE_MAP: Record<string, string> = {
@@ -33,9 +33,25 @@ export async function GET() {
   };
 
   try {
-    type StaffRow = { id: number; nickname: string | null; branch: string | null; role: string | null; status: string | null };
+    type StaffRow = {
+      id: number;
+      nickname: string | null;
+      branch: string | null;
+      role: string | null;
+      status: string | null;
+      trainingStartDate: string | null;
+      trainingEndDate: string | null;
+    };
     const staff = await prisma.branchStaff.findMany({
-      select: { id: true, nickname: true, branch: true, role: true, status: true },
+      select: {
+        id: true,
+        nickname: true,
+        branch: true,
+        role: true,
+        status: true,
+        trainingStartDate: true,
+        trainingEndDate: true,
+      },
       where: { status: { equals: 'Active', mode: 'insensitive' } },
     }) as StaffRow[];
     // Return nickname as name; map branch code → full name; map role "BM" → branch_manager_xxx
@@ -50,16 +66,35 @@ export async function GET() {
           role: s.role?.toUpperCase() === 'BM'
             ? `branch_manager_${(fullBranch ?? '').substring(0, 3).toLowerCase()}`
             : null,
+          trainingStartDate: s.trainingStartDate,
+          trainingEndDate: s.trainingEndDate,
         };
       });
-    return NextResponse.json(mapped);
+
+    // Interim branch scoping: non-management users see only their own branch.
+    // The DB stores branch as short codes; we filter on the mapped full names so
+    // a session with branchName "Ampang" matches mapped.branch "Ampang".
+    //
+    // Cross-branch escape hatch for the manpower planning UI: callers with a
+    // management role can pass `?include=all` to bypass scoping when they need
+    // staff from other branches (e.g. Branch Manager taking a replacement from
+    // another branch). Non-management roles cannot escalate via this param.
+    const includeAll =
+      new URL(request.url).searchParams.get('include') === 'all' &&
+      hasAnyRole((session.user as { role?: unknown } | undefined)?.role, MANAGEMENT_ROLES);
+    const userBranch = (session.user as { branchName?: string }).branchName;
+    const scoped = canSeeAllBranches(session) || includeAll
+      ? mapped
+      : mapped.filter(m => m.branch === userBranch);
+
+    return NextResponse.json(scoped);
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch" }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
-  const { error } = await requireRole(MANAGEMENT_ROLES);
+  const { session, error } = await requireRole(MANAGEMENT_ROLES);
   if (error) return error;
 
   // Reverse map: full branch name → short code stored in BranchStaff
@@ -91,6 +126,10 @@ export async function POST(request: Request) {
     if (!name?.trim() || !branch) {
       return NextResponse.json({ error: "Name and branch are required" }, { status: 400 });
     }
+
+    const branchGuard = assertSameBranch(session, branch);
+    if (branchGuard) return branchGuard;
+
     const role = position === "Branch Manager" ? "BM" : position?.trim() || null;
     // Store branch as short code if a mapping exists, otherwise store as-is
     const branchCode = BRANCH_NAME_TO_CODE[branch] ?? branch;

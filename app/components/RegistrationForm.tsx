@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { BRANCH_OPTIONS, ROLE_OPTIONS, CONTRACT_OPTIONS, GENDER_OPTIONS } from "@/lib/constants";
+import EmployeeIdInput from "@/app/components/EmployeeIdInput";
+import { composeEmployeeId, isValidSuffix } from "@/lib/employeeId";
 
 interface RegistrationFormProps {
   onSuccess?: () => void;
@@ -43,6 +45,9 @@ export default function RegistrationForm({
     rate: "",
   });
 
+  const [empIdPrefix, setEmpIdPrefix] = useState("");
+  const [empIdSuffix, setEmpIdSuffix] = useState("");
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -73,6 +78,11 @@ export default function RegistrationForm({
     if (!isValidEmail(formData.email)) newErrors.email = "Invalid email format";
     if (!formData.phone.trim()) newErrors.phone = "Phone is required";
     if (!isValidPhone(formData.phone)) newErrors.phone = "Invalid phone format";
+
+    // Employee ID is optional, but if a prefix is picked, the suffix must be valid
+    if (empIdPrefix && !isValidSuffix(empIdSuffix)) {
+      newErrors.employeeId = "Enter exactly 6 digits";
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -117,12 +127,21 @@ export default function RegistrationForm({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(
+          empIdPrefix && isValidSuffix(empIdSuffix)
+            ? { ...formData, employeeId: composeEmployeeId(empIdPrefix, empIdSuffix) }
+            : formData
+        ),
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to register employee");
+        const errBody = await response.json();
+        if (response.status === 409 && errBody.error?.toLowerCase().includes('employee id')) {
+          setErrors((prev) => ({ ...prev, employeeId: errBody.error }));
+          setSubmitting(false);
+          return;
+        }
+        throw new Error(errBody.error || "Failed to register employee");
       }
 
       const data = await response.json();
@@ -157,6 +176,9 @@ export default function RegistrationForm({
         probation: "",
         rate: "",
       });
+
+      setEmpIdPrefix("");
+      setEmpIdSuffix("");
 
       // Show success message with employee ID
       setSuccessMessage(`✓ Employee registered successfully! Employee ID: ${employeeId}`);
@@ -352,6 +374,18 @@ export default function RegistrationForm({
         <div className="border-t pt-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Employment Details</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <EmployeeIdInput
+                prefix={empIdPrefix}
+                suffix={empIdSuffix}
+                onPrefixChange={(v) => { setEmpIdPrefix(v); if (errors.employeeId) setErrors((p) => ({ ...p, employeeId: "" })); }}
+                onSuffixChange={(v) => { setEmpIdSuffix(v); if (errors.employeeId) setErrors((p) => ({ ...p, employeeId: "" })); }}
+                error={errors.employeeId}
+                disabled={submitting || isLoading}
+                required={false}
+              />
+            </div>
+
             {/* Branch/Dept */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-900 mb-1">Branch/Dept</label>
@@ -565,15 +599,15 @@ export default function RegistrationForm({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-1">
-                Emergency Contact Email
+                Emergency Contact Name
               </label>
               <input
-                type="email"
+                type="text"
                 name="Emc_Email"
                 value={formData.Emc_Email}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                placeholder="Enter emergency contact email"
+                placeholder="Enter emergency contact name"
                 disabled={submitting || isLoading}
               />
             </div>

@@ -1,6 +1,6 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
-import { normalizeRole, ADMIN_ROLES, MANAGEMENT_ROLES, type Role } from "@/lib/roles";
+import { normalizeRole, ADMIN_ROLES, MANAGEMENT_ROLES, ROLES, type Role } from "@/lib/roles";
 
 // Path-prefix-based role rules. First matching prefix wins — so list more
 // specific prefixes before shorter ones that would also match.
@@ -8,13 +8,17 @@ import { normalizeRole, ADMIN_ROLES, MANAGEMENT_ROLES, type Role } from "@/lib/r
 // Any path NOT matched here only needs the user to be logged in (enforced by
 // the `authorized` callback below).
 const ROLE_RULES: Array<{ prefix: string; allowed: readonly Role[] }> = [
-  // Admin-only pages (user / account administration)
-  { prefix: "/user-management",               allowed: ADMIN_ROLES },
+  // Admin-only pages (user / account administration). Academy gets in here too,
+  // because the user-management route hosts the per-coach edit form they need
+  // to set training dates from. The route handler narrows what they can see/edit.
+  { prefix: "/user-management",               allowed: [...ADMIN_ROLES, ROLES.ACADEMY] },
   { prefix: "/account-management",            allowed: ADMIN_ROLES },
   { prefix: "/register-employee",             allowed: ADMIN_ROLES },
 
-  // Management-level pages (HR operations, scheduling, employee roster)
-  { prefix: "/dashboard-employee-management", allowed: MANAGEMENT_ROLES },
+  // Management-level pages. Employee dashboard is also visible to Academy
+  // (read-mostly view of FT/PT coaches). Manpower, HR, on/offboarding remain
+  // management-only.
+  { prefix: "/dashboard-employee-management", allowed: [...MANAGEMENT_ROLES, ROLES.ACADEMY] },
   { prefix: "/manpower-schedule",             allowed: MANAGEMENT_ROLES },
   { prefix: "/hr-dashboard",                  allowed: MANAGEMENT_ROLES },
   { prefix: "/onboarding",                    allowed: MANAGEMENT_ROLES },

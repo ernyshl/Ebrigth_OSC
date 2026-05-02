@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getRoleLabel, getBranchLabel, BRANCH_OPTIONS, ROLE_OPTIONS } from "@/lib/constants";
+import { isAcademy } from "@/lib/roles";
+import { isInTraining } from "@/lib/training";
 
 interface Employee {
   id: string;
@@ -25,14 +27,35 @@ interface Employee {
   accessStatus: string;
   biometricTemplate: string | null;
   registeredAt: string;
+  trainingStartDate?: string;
+  trainingEndDate?: string;
 }
 
 interface EmployeeTableProps {
   refreshTrigger?: number;
+  userRole?: string;
+}
+
+function TrainingCell({ start, end }: { start?: string; end?: string }) {
+  if (!start && !end) return <span className="text-gray-400 text-xs">—</span>;
+  const inWindow = isInTraining(start, end);
+  const today = new Date().toISOString().slice(0, 10);
+  const future = !!start && start > today;
+  const cls = inWindow
+    ? "bg-green-100 text-green-800"
+    : future
+    ? "bg-blue-100 text-blue-800"
+    : "bg-gray-100 text-gray-700";
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold ${cls}`}>
+      🎓 {start || "—"} → {end || "—"}
+    </span>
+  );
 }
 
 export default function EmployeeTable({
   refreshTrigger,
+  userRole = "",
 }: EmployeeTableProps) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +65,8 @@ export default function EmployeeTable({
   const [statusFilter, setStatusFilter] = useState("all");
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const academyView = isAcademy(userRole);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -129,24 +154,13 @@ export default function EmployeeTable({
     }
   };
 
-
-  const handleRebuildIds = async () => {
-    if (!confirm("Rebuild all employee IDs based on current role and branch? This will update IDs for all employees.")) return;
-    try {
-      const res = await fetch("/api/employees/rebuild-ids", { method: "POST" });
-      const data = await res.json();
-      alert(data.message || "Done");
-      fetchEmployees();
-    } catch {
-      alert("Failed to rebuild IDs");
-    }
-  };
-
-  const filteredEmployees = employees.filter((e) => {
-    if (statusFilter === "all") return true;
-    if (statusFilter === "Archived") return e.accessStatus === "ARCHIVED";
-    return (e.Emp_Status || "") === statusFilter;
-  });
+  const filteredEmployees = employees
+    .filter((e) => !academyView || ["FT - Coach", "PT - Coach"].includes(e.role))
+    .filter((e) => {
+      if (statusFilter === "all") return true;
+      if (statusFilter === "Archived") return e.accessStatus === "ARCHIVED";
+      return (e.Emp_Status || "") === statusFilter;
+    });
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
@@ -200,128 +214,189 @@ export default function EmployeeTable({
         <div className="text-center py-8 text-gray-500">No employees found</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-100 border-b">
-              <tr>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Employee ID</th>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Full Name</th>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Gender</th>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Nick Name</th>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Phone</th>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">NRIC</th>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">DOB</th>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Home Address</th>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Role</th>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Contract</th>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Branch/Dept</th>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Start Date</th>
-                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Probation</th>
-                <th className="px-2 py-3 text-center font-semibold text-gray-700 text-xs">Status</th>
-                <th className="px-2 py-3 text-center font-semibold text-gray-700 text-xs">Biometrics</th>
-                <th className="px-2 py-3 text-center font-semibold text-gray-700 text-xs">Access</th>
-                <th className="px-2 py-3 text-center font-semibold text-gray-700 text-xs">Manage</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEmployees.map((employee) => (
-                <tr key={employee.id} className="border-b hover:bg-gray-50">
-                  <td className="px-2 py-3 font-medium text-gray-900 text-xs">
-                    {employee.employeeId}
-                  </td>
-                  <td className="px-2 py-3 text-gray-900 text-xs uppercase">
-                    {employee.fullName || `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim() || "-"}
-                  </td>
-                  <td className="px-2 py-3 text-gray-600 text-xs">
-                    {employee.gender === "MALE" ? "Male" : employee.gender === "FEMALE" ? "Female" : "-"}
-                  </td>
-                  <td className="px-2 py-3 text-gray-600 text-xs uppercase">{employee.nickName || "-"}</td>
-                  <td className="px-2 py-3 text-gray-600 text-xs">{employee.phone}</td>
-                  <td className="px-2 py-3 text-gray-600 text-xs">{employee.nric || "-"}</td>
-                  <td className="px-2 py-3 text-gray-600 text-xs">{employee.dob || "-"}</td>
-                  <td className="px-2 py-3 text-gray-600 text-xs uppercase max-w-[150px] truncate" title={employee.homeAddress}>
-                    {employee.homeAddress || "-"}
-                  </td>
-                  <td className="px-2 py-3 text-gray-600 text-xs">{getRoleLabel(employee.role)}</td>
-                  <td className="px-2 py-3 text-gray-600 text-xs">
-                    {employee.contract || "-"}
-                  </td>
-                  <td className="px-2 py-3 text-gray-600 text-xs">{getBranchLabel(employee.branch)}</td>
-                  <td className="px-2 py-3 text-gray-600 text-xs">{employee.startDate || "-"}</td>
-                  <td className="px-2 py-3 text-gray-600 text-xs">{employee.probation || "-"}</td>
-                  <td className="px-2 py-3 text-center">
-                    <button
-                      onClick={() => handleStatusToggle(employee.id, employee.Emp_Status)}
-                      className={`px-2 py-1 rounded-full text-xs font-semibold transition-colors ${
-                        employee.Emp_Status === "Active"
-                          ? "bg-green-100 text-green-800 hover:bg-green-200"
-                          : employee.Emp_Status === "Inactive"
-                          ? "bg-red-100 text-red-800 hover:bg-red-200"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      {employee.Emp_Status || "—"}
-                    </button>
-                  </td>
-                  <td className="px-2 py-3 text-center">
-                    {employee.biometricTemplate ? (
-                      <span className="text-green-600 font-semibold text-xs">✓</span>
-                    ) : (
-                      <span className="text-red-600 font-semibold text-xs">✗</span>
-                    )}
-                  </td>
-                  <td className="px-2 py-3 text-center relative">
-                    <div ref={openDropdown === employee.id ? dropdownRef : null}>
-                      <button
-                        onClick={() => setOpenDropdown(openDropdown === employee.id ? null : employee.id)}
-                        className="px-2 py-1 border border-gray-300 rounded text-xs bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-left"
-                      >
-                        {employee.accessStatus
-                          ? employee.accessStatus.split(",").join(", ")
-                          : "— None —"}
-                        <span className="float-right">▾</span>
-                      </button>
-                      {openDropdown === employee.id && (
-                        <div className="absolute z-50 left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 min-w-[140px] text-left">
-                          {ACCESS_OPTIONS.map((o) => {
-                            const current = employee.accessStatus ? employee.accessStatus.split(",") : [];
-                            const checked = current.includes(o.value);
-                            return (
-                              <label key={o.value} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 rounded cursor-pointer text-xs">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => {
-                                    const next = checked
-                                      ? current.filter((v) => v !== o.value)
-                                      : [...current, o.value];
-                                    handleAccessChange(employee.id, next);
-                                  }}
-                                />
-                                {o.label}
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-2 py-3 text-center">
-                    <a
-                      href={`/user-management?employeeId=${employee.id}`}
-                      className="px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                    >
-                      Manage
-                    </a>
-                  </td>
+          {academyView ? (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-100 border-b">
+                <tr>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Full Name</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Phone</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Role</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Branch/Dept</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Contract</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Start Date</th>
+                  <th className="px-2 py-3 text-center font-semibold text-gray-700 text-xs">Status</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Training</th>
+                  <th className="px-2 py-3 text-center font-semibold text-gray-700 text-xs">Manage</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredEmployees.map((employee) => (
+                  <tr key={employee.id} className="border-b hover:bg-gray-50">
+                    <td className="px-2 py-3 text-gray-900 text-xs uppercase">
+                      {employee.fullName || `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim() || "-"}
+                      {isInTraining(employee.trainingStartDate, employee.trainingEndDate) && (
+                        <span className="ml-1" title={`In training: ${employee.trainingStartDate} → ${employee.trainingEndDate}`}>🎓</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">{employee.phone}</td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">{getRoleLabel(employee.role)}</td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">{getBranchLabel(employee.branch)}</td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">{employee.contract || "-"}</td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">{employee.startDate || "-"}</td>
+                    <td className="px-2 py-3 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                        employee.Emp_Status === "Active"
+                          ? "bg-green-100 text-green-800"
+                          : employee.Emp_Status === "Inactive"
+                          ? "bg-red-100 text-red-800"
+                          : "bg-gray-100 text-gray-600"
+                      }`}>
+                        {employee.Emp_Status || "—"}
+                      </span>
+                    </td>
+                    <td className="px-2 py-3">
+                      <TrainingCell start={employee.trainingStartDate} end={employee.trainingEndDate} />
+                    </td>
+                    <td className="px-2 py-3 text-center">
+                      <a
+                        href={`/user-management?employeeId=${employee.id}`}
+                        className="px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        Edit
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-100 border-b">
+                <tr>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Employee ID</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Full Name</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Gender</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Nick Name</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Phone</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">NRIC</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">DOB</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Home Address</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Role</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Contract</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Branch/Dept</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Start Date</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Probation</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Training</th>
+                  <th className="px-2 py-3 text-center font-semibold text-gray-700 text-xs">Status</th>
+                  <th className="px-2 py-3 text-center font-semibold text-gray-700 text-xs">Biometrics</th>
+                  <th className="px-2 py-3 text-center font-semibold text-gray-700 text-xs">Access</th>
+                  <th className="px-2 py-3 text-center font-semibold text-gray-700 text-xs">Manage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEmployees.map((employee) => (
+                  <tr key={employee.id} className="border-b hover:bg-gray-50">
+                    <td className="px-2 py-3 font-medium text-gray-900 text-xs">
+                      {employee.employeeId}
+                    </td>
+                    <td className="px-2 py-3 text-gray-900 text-xs uppercase">
+                      {employee.fullName || `${employee.firstName ?? ""} ${employee.lastName ?? ""}`.trim() || "-"}
+                    </td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">
+                      {employee.gender === "MALE" ? "Male" : employee.gender === "FEMALE" ? "Female" : "-"}
+                    </td>
+                    <td className="px-2 py-3 text-gray-600 text-xs uppercase">{employee.nickName || "-"}</td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">{employee.phone}</td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">{employee.nric || "-"}</td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">{employee.dob || "-"}</td>
+                    <td className="px-2 py-3 text-gray-600 text-xs uppercase max-w-[150px] truncate" title={employee.homeAddress}>
+                      {employee.homeAddress || "-"}
+                    </td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">{getRoleLabel(employee.role)}</td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">
+                      {employee.contract || "-"}
+                    </td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">{getBranchLabel(employee.branch)}</td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">{employee.startDate || "-"}</td>
+                    <td className="px-2 py-3 text-gray-600 text-xs">{employee.probation || "-"}</td>
+                    <td className="px-2 py-3">
+                      <TrainingCell start={employee.trainingStartDate} end={employee.trainingEndDate} />
+                    </td>
+                    <td className="px-2 py-3 text-center">
+                      <button
+                        onClick={() => handleStatusToggle(employee.id, employee.Emp_Status)}
+                        className={`px-2 py-1 rounded-full text-xs font-semibold transition-colors ${
+                          employee.Emp_Status === "Active"
+                            ? "bg-green-100 text-green-800 hover:bg-green-200"
+                            : employee.Emp_Status === "Inactive"
+                            ? "bg-red-100 text-red-800 hover:bg-red-200"
+                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }`}
+                      >
+                        {employee.Emp_Status || "—"}
+                      </button>
+                    </td>
+                    <td className="px-2 py-3 text-center">
+                      {employee.biometricTemplate ? (
+                        <span className="text-green-600 font-semibold text-xs">✓</span>
+                      ) : (
+                        <span className="text-red-600 font-semibold text-xs">✗</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-3 text-center relative">
+                      <div ref={openDropdown === employee.id ? dropdownRef : null}>
+                        <button
+                          onClick={() => setOpenDropdown(openDropdown === employee.id ? null : employee.id)}
+                          className="px-2 py-1 border border-gray-300 rounded text-xs bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-left"
+                        >
+                          {employee.accessStatus
+                            ? employee.accessStatus.split(",").join(", ")
+                            : "— None —"}
+                          <span className="float-right">▾</span>
+                        </button>
+                        {openDropdown === employee.id && (
+                          <div className="absolute z-50 left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 min-w-[140px] text-left">
+                            {ACCESS_OPTIONS.map((o) => {
+                              const current = employee.accessStatus ? employee.accessStatus.split(",") : [];
+                              const checked = current.includes(o.value);
+                              return (
+                                <label key={o.value} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 rounded cursor-pointer text-xs">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => {
+                                      const next = checked
+                                        ? current.filter((v) => v !== o.value)
+                                        : [...current, o.value];
+                                      handleAccessChange(employee.id, next);
+                                    }}
+                                  />
+                                  {o.label}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-2 py-3 text-center">
+                      <a
+                        href={`/user-management?employeeId=${employee.id}`}
+                        className="px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        Manage
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 
       {/* Summary */}
-      <div className="mt-6 p-4 bg-gray-50 rounded-lg flex items-start justify-between gap-4">
+      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
         <div>
           <p className="text-sm text-gray-600">
             Total Employees: <span className="font-bold text-gray-900">{employees.length}</span>
@@ -344,12 +419,6 @@ export default function EmployeeTable({
             </span>
           </p>
         </div>
-        <button
-          onClick={handleRebuildIds}
-          className="shrink-0 px-3 py-1.5 text-xs font-medium bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
-        >
-          Rebuild IDs
-        </button>
       </div>
     </div>
   );

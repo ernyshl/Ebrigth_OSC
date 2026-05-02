@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Manual Employee ID — Design Spec</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .prose h1 { font-size: 2rem; font-weight: 800; color: #111827; margin-top: 0; margin-bottom: 0.5rem; }
+  .prose h2 { font-size: 1.5rem; font-weight: 700; color: #111827; margin-top: 2rem; margin-bottom: 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid #e5e7eb; }
+  .prose h3 { font-size: 1.15rem; font-weight: 600; color: #111827; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+  .prose p, .prose ul, .prose ol { margin: 0.75rem 0; line-height: 1.65; color: #1f2937; }
+  .prose ul { padding-left: 1.5rem; list-style-type: disc; }
+  .prose ol { padding-left: 1.5rem; list-style-type: decimal; }
+  .prose li { margin: 0.25rem 0; }
+  .prose code { background: #f3f4f6; padding: 1px 5px; border-radius: 4px; font-size: 0.875em; color: #be185d; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  .prose pre { background: #0f172a; color: #e2e8f0; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+  .prose pre code { background: transparent; color: inherit; padding: 0; }
+  .prose table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+  .prose th { background: #f3f4f6; text-align: left; padding: 0.6rem 0.8rem; border: 1px solid #e5e7eb; color: #111827; font-weight: 600; }
+  .prose td { padding: 0.6rem 0.8rem; border: 1px solid #e5e7eb; vertical-align: top; color: #1f2937; }
+  .prose tr:nth-child(even) td { background: #fafafa; }
+  .prose strong { font-weight: 600; color: #111827; }
+  .prose em { color: #4b5563; }
+  .meta { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.9rem; }
+  .meta b { color: #1e40af; }
+</style>
+</head>
+<body class="bg-gray-100 min-h-screen p-6 sm:p-10">
+<div class="max-w-4xl mx-auto bg-white rounded-lg shadow p-8 sm:p-10 prose">
+
+<h1>Manual Employee ID Entry — Design Spec</h1>
+
+<div class="meta">
+  <b>Date:</b> 2026-04-25 &nbsp;·&nbsp;
+  <b>Author:</b> Dina (od@ebright.my) &nbsp;·&nbsp;
+  <b>Status:</b> Approved (awaiting implementation plan)
+</div>
+
+<h2>1. Summary</h2>
+<p>Replace the auto-generated Employee ID system with a manual, two-part entry: a <strong>role-code dropdown</strong> (first 2 digits) + a <strong>manual 6-digit text input</strong>. Final ID is a plain 8-digit string with no separator (e.g., <code>33080012</code>). The "Rebuild IDs" button and its backing API are removed entirely.</p>
+
+<h2>2. Motivation</h2>
+<p>Today, Employee IDs are auto-generated from <code>role + branch + sequence</code> by <code>buildEmployeeId()</code> in <code>/api/employees/route.ts</code>. This:</p>
+<ul>
+  <li>Couples ID structure to role/branch lookup tables that admins can't see or change easily.</li>
+  <li>Has only 4 position codes (CEO=11, HOD=22, EXEC/BM/FT/PT-Coach all collapsed to 33, INT=44) — admins want <strong>separate codes for BM, FT Coach, and PT Coach</strong>.</li>
+  <li>Forces all-or-nothing rebuild via the "Rebuild IDs" button when role/branch mappings change.</li>
+</ul>
+<p>Admins want <strong>direct control</strong>: pick the role code, type the 6-digit suffix, done.</p>
+
+<h2>3. Role-Code Mapping</h2>
+<p>A new constant added to <code>lib/constants.ts</code>:</p>
+<pre><code>export const ROLE_CODE_OPTIONS = [
+  { value: "11", label: "11 — CEO" },
+  { value: "22", label: "22 — HOD" },
+  { value: "33", label: "33 — EXEC" },
+  { value: "44", label: "44 — INTERN" },
+  { value: "55", label: "55 — BM" },
+  { value: "66", label: "66 — FT COACH" },
+  { value: "77", label: "77 — PT COACH" },
+] as const;</code></pre>
+<p>Used by both Add User and Edit User forms.</p>
+
+<h2>4. UI — Add User Form</h2>
+<p><strong>Location:</strong> Top of the <strong>Employment Details</strong> section in <code>app/components/RegistrationForm.tsx</code>, above the existing Branch field.</p>
+<p><strong>Layout:</strong></p>
+<pre><code>Employee ID *
+[ — Select role — ▾ ]  [ ______ ]
+8 digits total — first 2 from dropdown, last 6 entered manually.</code></pre>
+<p><strong>Field behavior:</strong></p>
+<table>
+  <thead><tr><th>Element</th><th>Behavior</th></tr></thead>
+  <tbody>
+    <tr><td>Dropdown</td><td>Required. Renders all 7 entries from <code>ROLE_CODE_OPTIONS</code>. Default placeholder <code>"— Select role —"</code>.</td></tr>
+    <tr><td>Text input</td><td>Required. <code>maxlength=6</code>. On every change, strip non-digit characters (<code>value.replace(/\D/g, "")</code>). Monospace font, placeholder <code>"6 digits"</code>.</td></tr>
+    <tr><td>Helper text</td><td><code>"8 digits total — first 2 from dropdown, last 6 entered manually."</code></td></tr>
+    <tr><td>On submit</td><td>Concatenate <code>dropdown + input</code> → 8-digit string. Send as <code>employeeId</code> field in POST body.</td></tr>
+  </tbody>
+</table>
+<p><strong>Client-side validation</strong> (block submit + show inline error):</p>
+<ul>
+  <li>Dropdown must be selected.</li>
+  <li>Text input must match <code>/^\d{6}$/</code> (exactly 6 digits, leading zeros allowed).</li>
+</ul>
+<p>Server-side handles the uniqueness check (returns 409 with error message → form shows it).</p>
+
+<h2>5. UI — Edit User / Profile Form</h2>
+<p>The same dropdown + 6-digit input is added to <strong>two</strong> edit flows:</p>
+
+<h3>5.1 <code>app/components/UserManagement.tsx</code> (side detail panel, edit mode)</h3>
+<p>The current edit mode (lines 360–431, before the "Save" / "Cancel" buttons) has no Employee ID input — it only shows the ID read-only in view mode (line 439). Add the new dropdown + 6-digit field at the top of the edit-mode Personal Info section.</p>
+
+<h3>5.2 <code>app/components/UserProfile.tsx</code> (full profile page)</h3>
+<p>Replace the existing <code>disabled</code> <code>&lt;input name="employeeId"&gt;</code> (lines 234–241) with the dropdown + 6-digit input. The view-mode display (line 243) stays as-is, showing the plain 8-digit string.</p>
+
+<p><strong>Behavior — same in both files:</strong></p>
+<p>When loading an existing employee, the form <strong>splits</strong> the stored 8-digit ID:</p>
+<ul>
+  <li>First 2 digits → preselect the dropdown (if it matches a known code; otherwise leave dropdown empty and show a warning <em>"Existing ID has unrecognized role code"</em>).</li>
+  <li>Last 6 digits → prefill the text input.</li>
+</ul>
+<p>When saving:</p>
+<ul>
+  <li>If admin didn't change either part: skip sending <code>employeeId</code> in the PUT body (no-op).</li>
+  <li>If admin changed either part: validate (same client rules as Add User) and send the new 8-digit <code>employeeId</code>.</li>
+</ul>
+
+<h2>6. Backend — <code>POST /api/employees</code></h2>
+<p>Changes to <code>app/api/employees/route.ts</code>:</p>
+<p><strong>Remove:</strong></p>
+<ul>
+  <li><code>getPositionCode()</code> helper (lines 7–15).</li>
+  <li><code>getDeptCode()</code> helper (lines 18–30).</li>
+  <li><code>buildEmployeeId()</code> helper (lines 32–34).</li>
+  <li>The auto-generation call (lines 128–129).</li>
+</ul>
+<p><strong>Add:</strong></p>
+<ul>
+  <li><code>employeeId</code> becomes a required field. Validate:
+    <ul>
+      <li>Present in body.</li>
+      <li>Matches <code>/^\d{8}$/</code>.</li>
+      <li>Not used by any existing employee (any access status, including ARCHIVED): <code>findFirst({ where: { employeeId } })</code> — return 409 with <code>{ error: "Employee ID already exists" }</code> if found.</li>
+    </ul>
+  </li>
+  <li>Add <code>employeeId</code> to the destructured fields and pass directly into <code>prisma.branchStaff.create({ data: { ..., employeeId, ... } })</code>.</li>
+</ul>
+<pre><code>if (!fullName || !email || !phone || !branch || !role || !employeeId) {
+  return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+}
+if (!/^\d{8}$/.test(employeeId)) {
+  return NextResponse.json({ error: 'Employee ID must be exactly 8 digits' }, { status: 400 });
+}</code></pre>
+
+<h2>7. Backend — <code>PUT /api/employees</code></h2>
+<p><strong>Remove</strong> the auto-recalculation block (lines 189–197) that rebuilds the ID when branch/role changes.</p>
+<p><strong>Update</strong> the <code>employeeId</code> handling:</p>
+<ul>
+  <li>If <code>employeeId</code> is in the request body:
+    <ul>
+      <li>Validate format (<code>/^\d{8}$/</code>).</li>
+      <li>Validate uniqueness against <strong>other</strong> employees: <code>findFirst({ where: { employeeId, NOT: { id: parseInt(id) } } })</code> — return 409 if found.</li>
+      <li>Pass through to the update.</li>
+    </ul>
+  </li>
+</ul>
+
+<h2>8. Backend — Delete <code>/api/employees/rebuild-ids</code></h2>
+<p>Delete the entire file <code>app/api/employees/rebuild-ids/route.ts</code>. No callers remain after removing the button.</p>
+
+<h2>9. Frontend — <code>EmployeeTable.tsx</code></h2>
+<p>Changes to <code>app/components/EmployeeTable.tsx</code>:</p>
+<ul>
+  <li>Remove the <code>handleRebuildIds</code> function (lines 133–143).</li>
+  <li>Remove the "Rebuild IDs" button (lines 347–352).</li>
+  <li>Adjust the surrounding wrapper — drop <code>flex justify-between</code> so the summary fills the row naturally.</li>
+</ul>
+
+<h2>10. CSV Import</h2>
+<p>Changes to <code>app/user-management/page.tsx</code>:</p>
+<ul>
+  <li>Add <code>"employeeId"</code> as the <strong>first</strong> entry in <code>CSV_HEADERS</code> (so it leads both export and import templates).</li>
+  <li>The existing import loop already POSTs each row to <code>/api/employees</code>. Backend validation (Section 6) handles missing/invalid/duplicate <code>employeeId</code> automatically — failed rows increment the <code>failed</code> counter.</li>
+</ul>
+
+<h2>11. Out of Scope</h2>
+<ul>
+  <li>Existing 252 employee IDs stay as they are. No migration script.</li>
+  <li>The database schema (already has a plain string <code>employeeId</code> column).</li>
+  <li>Search, filter, table display, or export logic for Employee ID — already treats it as a plain string.</li>
+  <li>Hyphenated display formats (<code>33-080012</code>) — confirmed plain 8 digits everywhere.</li>
+</ul>
+
+<h2>12. Validation Rules Summary</h2>
+<table>
+  <thead><tr><th>Rule</th><th>Where enforced</th><th>On fail</th></tr></thead>
+  <tbody>
+    <tr><td>Dropdown required</td><td>Client (form)</td><td>Inline error, block submit</td></tr>
+    <tr><td>6-digit input required, digits-only, exactly 6 chars</td><td>Client (form)</td><td>Inline error, block submit</td></tr>
+    <tr><td>Final 8-digit format <code>/^\d{8}$/</code></td><td>Server</td><td>400 <code>"Employee ID must be exactly 8 digits"</code></td></tr>
+    <tr><td>Unique across all employees (incl. ARCHIVED)</td><td>Server</td><td>409 <code>"Employee ID already exists"</code> — form surfaces inline</td></tr>
+  </tbody>
+</table>
+
+<h2>13. Files Touched</h2>
+<table>
+  <thead><tr><th>File</th><th>Change</th></tr></thead>
+  <tbody>
+    <tr><td><code>lib/constants.ts</code></td><td>Add <code>ROLE_CODE_OPTIONS</code> constant</td></tr>
+    <tr><td><code>app/components/RegistrationForm.tsx</code></td><td>Add Employee ID field at top of Employment Details, with validation</td></tr>
+    <tr><td><code>app/components/UserManagement.tsx</code></td><td>Add Employee ID dropdown + 6-digit input to side-panel edit mode</td></tr>
+    <tr><td><code>app/components/UserProfile.tsx</code></td><td>Replace disabled <code>employeeId</code> input with dropdown + 6-digit input</td></tr>
+    <tr><td><code>app/components/EmployeeTable.tsx</code></td><td>Remove <code>handleRebuildIds</code> and button</td></tr>
+    <tr><td><code>app/api/employees/route.ts</code></td><td>Remove auto-gen helpers; require + validate <code>employeeId</code> in POST and PUT</td></tr>
+    <tr><td><code>app/api/employees/rebuild-ids/route.ts</code></td><td>Delete file</td></tr>
+    <tr><td><code>app/user-management/page.tsx</code></td><td>Add <code>"employeeId"</code> to <code>CSV_HEADERS</code></td></tr>
+  </tbody>
+</table>
+
+</div>
+</body>
+</html>

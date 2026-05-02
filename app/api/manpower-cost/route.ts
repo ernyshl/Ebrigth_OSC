@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/nextauth";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth";
 import {
   getWorkingDaysForBranch,
   getTimeSlotsForDay,
@@ -124,8 +123,8 @@ function calculateHoursFromSelections(
  * substring matching to handle short-form names (e.g. slot says "Diena", staff
  * record is "NUR IRDIENA BATRISYIA BINTI ASMAWI" with nickname "IRDIENA").
  *
- * When substring matching produces multiple candidates, prefer the one whose
- * home branch matches the schedule's branch.
+ * When more than one candidate matches a key (e.g. two staff share nickname
+ * "IQBAL"), prefer the one whose home branch matches the schedule's branch.
  */
 function buildStaffResolver(allStaff: StaffRecord[]) {
   // Allow multiple candidates per name/nickname key — many staff share short
@@ -225,13 +224,22 @@ function shouldExcludeStaff(staff: StaffRecord): boolean {
   return false;
 }
 
+/**
+ * GET /api/manpower-cost?month=2026-04
+ *
+ * Returns staff hours + cost data by parsing ManpowerSchedule selections and
+ * resolving each slot value to a BranchStaff record (the single source of
+ * truth for employee identity, branch, role, and rate).
+ */
 export async function GET(request: Request) {
+  const auth = await requireSession();
+  if (auth.error) return auth.error;
+
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get("month");
 
-    const session = await getServerSession(authOptions);
-    const sessionUser = session?.user as any;
+    const sessionUser = auth.session.user as any;
     const userRole = sessionUser?.role || "";
     const isEmployeeView = isEmployee(userRole);
 

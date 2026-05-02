@@ -14,6 +14,17 @@ import {
   isManagerOnDutySlot,
 } from "@/lib/manpowerUtils";
 import { isBranchManager } from "@/lib/roles";
+import { isInTraining } from "@/lib/training";
+
+function nameWithBadge(name: string, training?: { start?: string; end?: string }) {
+  const inWindow = isInTraining(training?.start, training?.end);
+  if (!inWindow) return name;
+  return (
+    <span title={`In training: ${training?.start} → ${training?.end}`}>
+      {name} 🎓
+    </span>
+  );
+}
 
 // --- DATE FORMATTING HELPERS ---
 const formatDateString = (dateStr: string) => {
@@ -49,7 +60,7 @@ const getShortName = (fullName: string) => {
 };
 
 // --- HELPER COMPONENT: DETAILED SUMMARY TABLE ---
-const SummaryTable = ({ title, data, theme = "blue" }: { title: string, data: any[], theme?: "blue" | "orange" }) => {
+const SummaryTable = ({ title, data, theme = "blue", trainingMap = {} }: { title: string, data: any[], theme?: "blue" | "orange", trainingMap?: Record<string, { start?: string; end?: string }> }) => {
   const formatTime = (d: number) => {
     const h = Math.floor(d);
     const m = Math.round((d - h) * 60);
@@ -80,7 +91,7 @@ const SummaryTable = ({ title, data, theme = "blue" }: { title: string, data: an
               return (
                 <tr key={row.name} className="hover:bg-slate-50 transition-colors">
                   <td className="p-2 border-r text-center text-slate-400 font-bold">{index + 1}</td>
-                  <td className="p-2 border-r font-black text-slate-700">{row.name}</td>
+                  <td className="p-2 border-r font-black text-slate-700">{nameWithBadge(row.name, trainingMap[row.name])}</td>
                   <td className="p-2 border-r text-center">
                     <span className="bg-slate-50 border rounded px-2 py-0.5 text-slate-600 font-bold">{c.h}h {c.m}m</span>
                   </td>
@@ -112,6 +123,7 @@ export default function UpdateSchedulePage() {
   const [updatedNotes, setUpdatedNotes] = useState<Record<string, string>>({});
   const [branchStaffData, setBranchStaffData] = useState<Record<string, string[]>>({});
   const [branchManagerData, setBranchManagerData] = useState<Record<string, string[]>>({});
+  const [trainingMap, setTrainingMap] = useState<Record<string, { start?: string; end?: string }>>({});
   const [columnReplacementBranch, setColumnReplacementBranch] = useState<Record<string, string>>({});
   const [managerReplacementBranch, setManagerReplacementBranch] = useState<Record<string, string>>({});
   const [scheduledElsewhere, setScheduledElsewhere] = useState<Record<string, Record<string, Set<string>>>>({});
@@ -131,11 +143,12 @@ export default function UpdateSchedulePage() {
   const [drillMonth, setDrillMonth] = useState<number | null>(null);
 
   const fetchStaff = async () => {
-    const res = await fetch('/api/branch-staff');
+    const res = await fetch('/api/branch-staff?include=all');
     const staffList = await res.json();
     if (!Array.isArray(staffList)) return;
     const grouped: Record<string, string[]> = {};
     const managers: Record<string, string[]> = {};
+    const tmap: Record<string, { start?: string; end?: string }> = {};
     staffList.forEach((s: any) => {
       if (!s.branch) return;
       if (!grouped[s.branch]) grouped[s.branch] = [];
@@ -144,9 +157,13 @@ export default function UpdateSchedulePage() {
         if (!managers[s.branch]) managers[s.branch] = [];
         managers[s.branch].push(s.name);
       }
+      if (s.trainingStartDate || s.trainingEndDate) {
+        tmap[s.name] = { start: s.trainingStartDate ?? undefined, end: s.trainingEndDate ?? undefined };
+      }
     });
     setBranchStaffData(grouped);
     setBranchManagerData(managers);
+    setTrainingMap(tmap);
   };
 
   useEffect(() => {
@@ -642,7 +659,7 @@ export default function UpdateSchedulePage() {
                                               const isConflict = !!conflictBranch;
                                               return (
                                                 <option key={e} value={e} disabled={isConflict}>
-                                                  {isConflict ? `${e} (at ${conflictBranch})` : e}
+                                                  {isConflict ? `${e} (at ${conflictBranch})` : `${e}${isInTraining(trainingMap[e]?.start, trainingMap[e]?.end) ? ' 🎓' : ''}`}
                                                 </option>
                                               );
                                             })}
@@ -691,7 +708,7 @@ export default function UpdateSchedulePage() {
                                                   const isConflict = !!conflictBranch;
                                                   return (
                                                     <option key={e} value={e} disabled={namesUsedInOtherColumns.has(e) || isConflict} className="text-black">
-                                                      {isConflict ? `${e} (at ${conflictBranch})` : e}
+                                                      {isConflict ? `${e} (at ${conflictBranch})` : `${e}${isInTraining(trainingMap[e]?.start, trainingMap[e]?.end) ? ' 🎓' : ''}`}
                                                     </option>
                                                   );
                                                 })}
@@ -719,8 +736,8 @@ export default function UpdateSchedulePage() {
               <div className="mt-6 bg-white p-4 rounded-xl border border-slate-200 shadow-md">
                 <h2 className="text-sm font-black text-center uppercase tracking-widest text-slate-800 mb-4">📊 Staff Hours Comparison</h2>
                 <div className="flex flex-col gap-4">
-                    <SummaryTable title="ORIGINAL" data={calculateHoursForData({}, true)} theme="blue" />
-                    <SummaryTable title="ADJUSTED" data={calculateHoursForData(updatedSelections, false)} theme="orange" />
+                    <SummaryTable title="ORIGINAL" data={calculateHoursForData({}, true)} theme="blue" trainingMap={trainingMap} />
+                    <SummaryTable title="ADJUSTED" data={calculateHoursForData(updatedSelections, false)} theme="orange" trainingMap={trainingMap} />
                 </div>
               </div>
             </div>

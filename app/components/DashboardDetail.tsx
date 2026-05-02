@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { isHR, isAcademy } from "@/lib/roles";
 
 interface DashboardCard {
   id: string;
@@ -112,7 +114,14 @@ interface DashboardDetailProps {
 
 export default function DashboardDetail({ id }: DashboardDetailProps) {
   const router = useRouter();
+  const { data: session } = useSession();
+  const userIsHR = isHR((session?.user as { role?: unknown } | undefined)?.role);
+  const userIsAcademy = isAcademy((session?.user as { role?: unknown } | undefined)?.role);
   const dashboard = dashboards.find((d) => d.id === id);
+
+  // For HR and Academy users on the HRMS hub, allow only the Employee Dashboard card.
+  const isItemEnabled = (href: string) =>
+    !((userIsHR || userIsAcademy) && id === "hrms" && href !== "/dashboard-employee-management");
 
   if (!dashboard) {
     return (
@@ -145,14 +154,29 @@ export default function DashboardDetail({ id }: DashboardDetailProps) {
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {dashboard.items.map((item) => (
-          <Link key={item.name} href={item.href}>
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer p-8 h-full flex flex-col items-center justify-center text-center">
-              <span className="text-5xl mb-4">{item.icon}</span>
-              <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{item.name}</h2>
-            </div>
-          </Link>
-        ))}
+        {dashboard.items.map((item) => {
+          const enabled = isItemEnabled(item.href);
+          if (!enabled) {
+            return (
+              <div
+                key={item.name}
+                aria-disabled="true"
+                className="bg-slate-100 rounded-2xl shadow-sm border border-slate-200 p-8 h-full flex flex-col items-center justify-center text-center cursor-not-allowed opacity-50"
+              >
+                <span className="text-5xl mb-4 grayscale">{item.icon}</span>
+                <h2 className="text-lg font-black text-slate-500 uppercase tracking-tight">{item.name}</h2>
+              </div>
+            );
+          }
+          return (
+            <Link key={item.name} href={item.href}>
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer p-8 h-full flex flex-col items-center justify-center text-center">
+                <span className="text-5xl mb-4">{item.icon}</span>
+                <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{item.name}</h2>
+              </div>
+            </Link>
+          );
+        })}
       </div>
 
     </div>

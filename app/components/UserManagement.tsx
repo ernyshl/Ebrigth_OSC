@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { BRANCH_OPTIONS, ROLE_OPTIONS, CONTRACT_OPTIONS, GENDER_OPTIONS } from "@/lib/constants";
-import { isSuperAdmin } from "@/lib/roles";
+import { BRANCH_OPTIONS, ROLE_OPTIONS, CONTRACT_OPTIONS, GENDER_OPTIONS, ROLE_CODES } from "@/lib/constants";
+import { isAdmin, isAcademy } from "@/lib/roles";
+import { isInTraining } from "@/lib/training";
+import EmployeeIdInput from "@/app/components/EmployeeIdInput";
+import { splitEmployeeId, composeEmployeeId, isValidSuffix, isValidEmployeeId } from "@/lib/employeeId";
 
 interface User {
   id: string;
@@ -40,6 +43,8 @@ interface User {
   biometricTemplate: string | null;
   registeredAt: string;
   updatedAt: string;
+  trainingStartDate?: string;
+  trainingEndDate?: string;
 }
 
 interface UserManagementProps {
@@ -55,8 +60,13 @@ const field = (label: string, value: string | undefined | null) => (
   </div>
 );
 
+function hasUnrecognizedPrefix(employeeId: string | undefined): boolean {
+  if (!employeeId || !isValidEmployeeId(employeeId)) return false;
+  return !ROLE_CODES.includes(splitEmployeeId(employeeId).prefix);
+}
+
 // Defaults to "" so that a caller forgetting to pass userRole fails closed
-// via `isSuperAdmin("") === false`, rather than silently granting admin access.
+// via `isAdmin("") === false`, rather than silently granting admin access.
 export default function UserManagement({ userRole = "" }: UserManagementProps) {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
@@ -65,12 +75,16 @@ export default function UserManagement({ userRole = "" }: UserManagementProps) {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState<User | null>(null);
+  const [empIdPrefix, setEmpIdPrefix] = useState("");
+  const [empIdSuffix, setEmpIdSuffix] = useState("");
+  const [empIdError, setEmpIdError] = useState("");
   const detailRef = useRef<HTMLDivElement>(null);
 
   const searchParams = useSearchParams();
   const targetEmployeeId = searchParams.get("employeeId");
 
-  const isAuthorized = isSuperAdmin(userRole);
+  const academyView = isAcademy(userRole);
+  const isAuthorized = isAdmin(userRole) || academyView;
 
   useEffect(() => {
     if (!isAuthorized) { setLoading(false); return; }
@@ -140,11 +154,35 @@ export default function UserManagement({ userRole = "" }: UserManagementProps) {
 
   const handleSave = async () => {
     if (!editData) return;
+    if (editData.trainingStartDate && editData.trainingEndDate &&
+        editData.trainingStartDate > editData.trainingEndDate) {
+      setError("Training end date must be on or after start date.");
+      return;
+    }
+    // Only send employeeId if BOTH parts are filled and valid; otherwise skip
+    // it from the payload so other field edits can still save.
+    const original = splitEmployeeId(selectedUser?.employeeId || "");
+    const idChanged = empIdPrefix !== original.prefix || empIdSuffix !== original.suffix;
+    const idIsComplete = !!empIdPrefix && isValidSuffix(empIdSuffix);
+    setEmpIdError("");
     try {
+      const newEmployeeId = idChanged && idIsComplete
+        ? composeEmployeeId(empIdPrefix, empIdSuffix)
+        : undefined;
+      const fullPayload = newEmployeeId !== undefined
+        ? { ...editData, employeeId: newEmployeeId }
+        : editData;
+      const payload = academyView
+        ? {
+            id: editData.id,
+            trainingStartDate: editData.trainingStartDate || "",
+            trainingEndDate: editData.trainingEndDate || "",
+          }
+        : fullPayload;
       const response = await fetch("/api/employees", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editData),
+        body: JSON.stringify(payload),
       });
       if (response.ok) {
         const result = await response.json();
@@ -153,7 +191,12 @@ export default function UserManagement({ userRole = "" }: UserManagementProps) {
         setSelectedUser(saved);
         setEditMode(false);
       } else {
-        setError("Failed to save user");
+        const errBody = await response.json().catch(() => ({}));
+        if (response.status === 409 && errBody.error?.toLowerCase().includes('employee id')) {
+          setEmpIdError(errBody.error);
+        } else {
+          setError(errBody.error || "Failed to save user");
+        }
       }
     } catch (err) {
       console.error("Error saving user:", err);
@@ -166,7 +209,7 @@ export default function UserManagement({ userRole = "" }: UserManagementProps) {
     if (!editData) return;
     const uppercaseFields = ["fullName", "nickName", "homeAddress"];
     const normalized = uppercaseFields.includes(name) ? value.toUpperCase() : value;
-    let updates: Partial<User> = { [name]: normalized };
+    const updates: Partial<User> = { [name]: normalized };
     if (name === "Emp_Status") {
       updates.accessStatus = value === "Active" ? "AUTHORIZED" : value === "Inactive" ? "UNAUTHORIZED" : editData.accessStatus;
     } else if (name === "accessStatus") {
@@ -178,12 +221,14 @@ export default function UserManagement({ userRole = "" }: UserManagementProps) {
   const getDisplayName = (user: User) =>
     user.fullName || `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "-";
 
-  const filteredUsers = users.filter(
-    (user) =>
-      getDisplayName(user).toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.employeeId.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = users
+    .filter((u) => !academyView || ["FT - Coach", "PT - Coach"].includes(u.role))
+    .filter(
+      (user) =>
+        getDisplayName(user).toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.employeeId.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   const inp = (label: string, name: keyof User, type = "text", extraClass = "") => (
     <div>
@@ -290,15 +335,27 @@ export default function UserManagement({ userRole = "" }: UserManagementProps) {
                   }`}>
                     {selectedUser.accessStatus === "AUTHORIZED" ? "✓ Authorized" : "✗ Unauthorized"}
                   </span>
+                  {isInTraining(selectedUser.trainingStartDate, selectedUser.trainingEndDate) && (
+                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800"
+                          title={`Training: ${selectedUser.trainingStartDate} → ${selectedUser.trainingEndDate}`}>
+                      🎓 In Training
+                    </span>
+                  )}
                   {!editMode && (
                     <div className="flex gap-2">
                       <button
-                        onClick={() => setEditMode(true)}
+                        onClick={() => {
+                          setEditMode(true);
+                          const parts = splitEmployeeId(selectedUser.employeeId);
+                          setEmpIdPrefix(parts.prefix);
+                          setEmpIdSuffix(parts.suffix);
+                          setEmpIdError("");
+                        }}
                         className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-1.5 px-4 rounded-lg transition-colors"
                       >
                         ✏️ Edit
                       </button>
-                      {selectedUser.accessStatus !== "ARCHIVED" && (
+                      {!academyView && selectedUser.accessStatus !== "ARCHIVED" && (
                         <button
                           onClick={() => handleArchive(selectedUser.id)}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-medium py-1.5 px-4 rounded-lg transition-colors"
@@ -306,23 +363,79 @@ export default function UserManagement({ userRole = "" }: UserManagementProps) {
                           Archive
                         </button>
                       )}
-                      <button
-                        onClick={() => handleDelete(selectedUser.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white text-sm font-medium py-1.5 px-4 rounded-lg transition-colors"
-                      >
-                        Delete
-                      </button>
+                      {!academyView && (
+                        <button
+                          onClick={() => handleDelete(selectedUser.id)}
+                          className="bg-red-600 hover:bg-red-700 text-white text-sm font-medium py-1.5 px-4 rounded-lg transition-colors"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
 
-              {editMode ? (
+              {editMode && academyView ? (
+                <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
+                  {/* Academy edit: read-only employment + editable training */}
+                  <section>
+                    <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b pb-2 mb-4">Employment</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {field("Full Name", getDisplayName(selectedUser))}
+                      {field("Phone", selectedUser.phone)}
+                      {field("Role", selectedUser.role)}
+                      {field("Branch/Dept", selectedUser.branch)}
+                      {field("Contract", selectedUser.contract)}
+                      {field("Start Date", selectedUser.startDate)}
+                      {field("Status", selectedUser.Emp_Status)}
+                    </div>
+                  </section>
+
+                  <section>
+                    <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b pb-2 mb-4">Training</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {inp("Training Start Date", "trainingStartDate", "date")}
+                      {inp("Training End Date", "trainingEndDate", "date")}
+                    </div>
+                    {editData?.trainingStartDate && editData?.trainingEndDate &&
+                      editData.trainingStartDate > editData.trainingEndDate && (
+                      <p className="text-xs text-red-600 mt-2">End date must be on or after start date.</p>
+                    )}
+                  </section>
+
+                  <div className="flex gap-3 pt-2 border-t">
+                    <button onClick={handleSave}
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                      💾 Save
+                    </button>
+                    <button onClick={() => {
+                      setEditMode(false);
+                      setEditData({ ...selectedUser });
+                      setEmpIdError("");
+                    }}
+                      className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : editMode ? (
                 <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
                   {/* Personal Info */}
                   <section>
                     <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b pb-2 mb-4">Personal Info</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <EmployeeIdInput
+                          prefix={empIdPrefix}
+                          suffix={empIdSuffix}
+                          onPrefixChange={(v) => { setEmpIdPrefix(v); if (empIdError) setEmpIdError(""); }}
+                          onSuffixChange={(v) => { setEmpIdSuffix(v); if (empIdError) setEmpIdError(""); }}
+                          error={empIdError}
+                          warning={hasUnrecognizedPrefix(selectedUser?.employeeId) ? "Existing ID has unrecognized role code" : undefined}
+                          required={false}
+                        />
+                      </div>
                       <div className="md:col-span-2">
                         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Full Name</label>
                         <input type="text" name="fullName" value={editData ? getDisplayName(editData) : ""}
@@ -398,12 +511,25 @@ export default function UserManagement({ userRole = "" }: UserManagementProps) {
                     </div>
                   </section>
 
+                  {/* Training */}
+                  <section>
+                    <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b pb-2 mb-4">Training</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {inp("Training Start Date", "trainingStartDate", "date")}
+                      {inp("Training End Date", "trainingEndDate", "date")}
+                    </div>
+                    {editData?.trainingStartDate && editData?.trainingEndDate &&
+                      editData.trainingStartDate > editData.trainingEndDate && (
+                      <p className="text-xs text-red-600 mt-2">End date must be on or after start date.</p>
+                    )}
+                  </section>
+
                   {/* Emergency Contact */}
                   <section>
                     <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b pb-2 mb-4">Emergency Contact</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {inp("Contact Number", "Emc_Number", "tel")}
-                      {inp("Contact Email", "Emc_Email", "email")}
+                      {inp("Full Name", "Emc_Email", "text")}
                       <div className="md:col-span-2">{inp("Relationship", "Emc_Relationship")}</div>
                     </div>
                   </section>
@@ -424,11 +550,38 @@ export default function UserManagement({ userRole = "" }: UserManagementProps) {
                       className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
                       💾 Save
                     </button>
-                    <button onClick={() => { setEditMode(false); setEditData({ ...selectedUser }); }}
+                    <button onClick={() => {
+                      setEditMode(false);
+                      setEditData({ ...selectedUser });
+                      setEmpIdError("");
+                    }}
                       className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors">
                       Cancel
                     </button>
                   </div>
+                </div>
+              ) : academyView ? (
+                <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
+                  {/* Academy read-only view */}
+                  <section>
+                    <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b pb-2 mb-4">Employment</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {field("Full Name", getDisplayName(selectedUser))}
+                      {field("Phone", selectedUser.phone)}
+                      {field("Role", selectedUser.role)}
+                      {field("Branch/Dept", selectedUser.branch)}
+                      {field("Contract", selectedUser.contract)}
+                      {field("Start Date", selectedUser.startDate)}
+                      {field("Status", selectedUser.Emp_Status)}
+                    </div>
+                  </section>
+                  <section>
+                    <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b pb-2 mb-4">Training</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {field("Training Start Date", selectedUser.trainingStartDate)}
+                      {field("Training End Date", selectedUser.trainingEndDate)}
+                    </div>
+                  </section>
                 </div>
               ) : (
                 <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
@@ -470,12 +623,21 @@ export default function UserManagement({ userRole = "" }: UserManagementProps) {
                     </div>
                   </section>
 
+                  {/* Training */}
+                  <section>
+                    <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b pb-2 mb-4">Training</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {field("Training Start Date", selectedUser.trainingStartDate)}
+                      {field("Training End Date", selectedUser.trainingEndDate)}
+                    </div>
+                  </section>
+
                   {/* Emergency Contact */}
                   <section>
                     <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide border-b pb-2 mb-4">Emergency Contact</h4>
                     <div className="grid grid-cols-2 gap-3">
                       {field("Contact Number", selectedUser.Emc_Number)}
-                      {field("Contact Email", selectedUser.Emc_Email)}
+                      {field("Full Name", selectedUser.Emc_Email)}
                       <div className="col-span-2">{field("Relationship", selectedUser.Emc_Relationship)}</div>
                     </div>
                   </section>
