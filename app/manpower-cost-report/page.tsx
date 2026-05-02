@@ -540,10 +540,31 @@ export default function ManpowerCostReportPage() {
             {!loading && !error && data && isEmployee && (() => {
               const s = filteredStaff[0];
               if (!s) return (
-                <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
-                  <p className="text-slate-400 font-medium">No data found for {monthLabel}.</p>
-                  <p className="text-slate-300 text-sm mt-1">Make sure schedules are finalized for this month.</p>
-                </div>
+                <>
+                  {/* Month/Week selector available even when there's no data, so the employee can switch to a month with data */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6">
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                      <div className="min-w-0">
+                        <h2 className="text-xl font-black text-slate-800">{employeeName || userName || "Employee"}</h2>
+                        <p className="text-sm text-slate-500 mt-1">
+                          {isEmployeePT ? "Part-Time" : isEmployeeFT ? "Full-Time" : ""} — Select a month to view your manpower report.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <CustomSelect
+                          value={selectedMonth}
+                          onChange={setSelectedMonth}
+                          options={AVAILABLE_MONTHS.map((m) => ({ value: m.value, label: m.label }))}
+                          icon={<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+                    <p className="text-slate-400 font-medium">No data found for {monthLabel}.</p>
+                    <p className="text-slate-300 text-sm mt-1">Make sure schedules are finalized for this month, or select a different month above.</p>
+                  </div>
+                </>
               );
 
               const execRate = data.totals.executiveRate || 11;
