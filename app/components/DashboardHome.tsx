@@ -102,7 +102,7 @@ export default function DashboardHome({ userRole, userEmail }: { userRole?: stri
   // that tags branch managers below.
   const tileAllowlist: ReadonlySet<string> | null =
     isSuperAdmin(userRole) ? null :
-    branchManager          ? new Set(["hrms", "inventory"]) :
+    branchManager          ? new Set(["hrms", "inventory", "crm", "sms"]) :
     isAcademyUser          ? new Set(["hrms", "inventory"]) :
     isEmployeeUser         ? new Set(["hrms"]) :
     null;
