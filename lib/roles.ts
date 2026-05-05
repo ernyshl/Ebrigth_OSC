@@ -23,6 +23,7 @@ export const ROLES = {
   INTERN:         "INTERN",
   FULL_TIME:      "Full_Time",
   PART_TIME:      "Part_Time",
+  ACADEMY:        "ACADEMY",
 } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES];
@@ -41,6 +42,7 @@ export const ROLE_VALUES = [
   ROLES.INTERN,
   ROLES.FULL_TIME,
   ROLES.PART_TIME,
+  ROLES.ACADEMY,
 ] as const;
 
 // Accepts common drift (case, underscores vs. hyphens, stray whitespace) and
@@ -71,6 +73,7 @@ export function normalizeRole(raw: unknown): Role | null {
     FULLTIME:       ROLES.FULL_TIME,
     PART_TIME:      ROLES.PART_TIME,
     PARTTIME:       ROLES.PART_TIME,
+    ACADEMY:        ROLES.ACADEMY,
   };
   return aliases[key] ?? null;
 }
@@ -105,6 +108,7 @@ export const isExecutive     = (raw: unknown) => hasRole(raw, [ROLES.EXECUTIVE])
 export const isIntern        = (raw: unknown) => hasRole(raw, [ROLES.INTERN]);
 export const isFullTime      = (raw: unknown) => hasRole(raw, [ROLES.FULL_TIME]);
 export const isPartTime      = (raw: unknown) => hasRole(raw, [ROLES.PART_TIME]);
+export const isAcademy       = (raw: unknown) => hasRole(raw, [ROLES.ACADEMY]);
 export const isEmployee      = (raw: unknown) => hasRole(raw, EMPLOYEE_ROLES);
 export const isManagement    = (raw: unknown) => hasRole(raw, MANAGEMENT_ROLES);
 
