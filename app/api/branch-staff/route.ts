@@ -33,9 +33,25 @@ export async function GET(request: Request) {
   };
 
   try {
-    type StaffRow = { id: number; nickname: string | null; branch: string | null; role: string | null; status: string | null };
+    type StaffRow = {
+      id: number;
+      nickname: string | null;
+      branch: string | null;
+      role: string | null;
+      status: string | null;
+      trainingStartDate: string | null;
+      trainingEndDate: string | null;
+    };
     const staff = await prisma.branchStaff.findMany({
-      select: { id: true, nickname: true, branch: true, role: true, status: true },
+      select: {
+        id: true,
+        nickname: true,
+        branch: true,
+        role: true,
+        status: true,
+        trainingStartDate: true,
+        trainingEndDate: true,
+      },
       where: { status: { equals: 'Active', mode: 'insensitive' } },
     }) as StaffRow[];
     // Return nickname as name; map branch code → full name; map role "BM" → branch_manager_xxx
@@ -50,6 +66,8 @@ export async function GET(request: Request) {
           role: s.role?.toUpperCase() === 'BM'
             ? `branch_manager_${(fullBranch ?? '').substring(0, 3).toLowerCase()}`
             : null,
+          trainingStartDate: s.trainingStartDate,
+          trainingEndDate: s.trainingEndDate,
         };
       });
 

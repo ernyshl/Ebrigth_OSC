@@ -92,6 +92,12 @@ export const MANAGEMENT_ROLES: readonly Role[] = [
 
 export const EMPLOYEE_ROLES: readonly Role[] = [ROLES.PART_TIME, ROLES.FULL_TIME];
 
+export const TRAINING_EDIT_ROLES: readonly Role[] = [
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.ACADEMY,
+];
+
 // ─── Predicates ──────────────────────────────────────────────────────────────
 
 function hasRole(raw: unknown, allowed: readonly Role[]): boolean {

@@ -120,13 +120,15 @@ function calculateHoursFromSelections(
 /**
  * Resolve a slot value (a name string written into ManpowerSchedule.selections)
  * to a single BranchStaff record. Tries exact name/nickname match first, then
- * substring matching to handle short-form names (slot says "Diena", staff
+ * substring matching to handle short-form names (e.g. slot says "Diena", staff
  * record is "NUR IRDIENA BATRISYIA BINTI ASMAWI" with nickname "IRDIENA").
  *
  * When more than one candidate matches a key (e.g. two staff share nickname
  * "IQBAL"), prefer the one whose home branch matches the schedule's branch.
  */
 function buildStaffResolver(allStaff: StaffRecord[]) {
+  // Allow multiple candidates per name/nickname key — many staff share short
+  // nicknames like "IQBAL" or "LUQMANUL", so we can't first-write-wins.
   const byKey: Record<string, StaffRecord[]> = {};
   const push = (key: string, s: StaffRecord) => {
     const list = (byKey[key] ||= []);
@@ -146,6 +148,7 @@ function buildStaffResolver(allStaff: StaffRecord[]) {
       if (exact.length === 1) return exact[0];
       const branchMatch = exact.find((s) => branchesMatch(s.branch, scheduleBranch));
       if (branchMatch) return branchMatch;
+      // Otherwise fall through and let substring matching try harder.
     }
 
     const candidates = allStaff.filter((s) => {
@@ -278,6 +281,9 @@ export async function GET(request: Request) {
 
     const resolveStaff = buildStaffResolver(allStaff);
 
+    // Resolve the logged-in employee (if any) to a single BranchStaff id, so we
+    // can filter the final results to that one person. Fail closed: if we can't
+    // resolve, return nothing for an employee user.
     let loggedInStaffId: number | null = null;
     if (isEmployeeView) {
       const me = resolveLoggedInStaff(
@@ -363,6 +369,10 @@ export async function GET(request: Request) {
 
     allEntries.forEach((entry) => {
       const staff = resolveStaff(entry.name, entry.branch);
+
+      // Aggregation key: BranchStaff.id when resolved, otherwise raw name+branch.
+      // Unresolved entries (slot value with no matching staff record) get their
+      // own bucket so they remain visible rather than silently merging.
       const key = staff ? `staff:${staff.id}` : `raw:${norm(entry.name)}:::${norm(entry.branch)}`;
 
       // When matched, always show the BranchStaff full name and the friendly
@@ -422,6 +432,7 @@ export async function GET(request: Request) {
 
     const results = Object.values(aggregated)
       .filter((emp) => {
+        // Apply exclusion based on the resolved staff record when available.
         if (emp.staffId !== null) {
           const staff = allStaff.find((s) => s.id === emp.staffId);
           if (staff && shouldExcludeStaff(staff)) return false;

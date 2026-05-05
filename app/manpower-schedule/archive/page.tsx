@@ -14,10 +14,21 @@ import {
   isManagerOnDutySlot,
 } from "@/lib/manpowerUtils";
 import { isBranchManager } from "@/lib/roles";
+import { isInTraining } from "@/lib/training";
+
+function nameWithBadge(name: string, training?: { start?: string; end?: string }) {
+  const inWindow = isInTraining(training?.start, training?.end);
+  if (!inWindow) return name;
+  return (
+    <span title={`In training: ${training?.start} → ${training?.end}`}>
+      {name} 🎓
+    </span>
+  );
+}
 
 
 // --- HELPER COMPONENT: SUMMARY TABLE ---
-const SummaryTable = ({ data }: { data: any[] }) => {
+const SummaryTable = ({ data, trainingMap = {} }: { data: any[], trainingMap?: Record<string, { start?: string; end?: string }> }) => {
   const formatTime = (d: number) => {
     const h = Math.floor(d);
     const m = Math.round((d - h) * 60);
@@ -47,7 +58,7 @@ const SummaryTable = ({ data }: { data: any[] }) => {
                     return (
                         <tr key={row.name} className="hover:bg-slate-50 transition-colors">
                             <td className="p-4 text-center border-r font-bold text-slate-500">{index + 1}</td>
-                            <td className="p-4 font-bold border-r text-slate-800">{row.name}</td>
+                            <td className="p-4 font-bold border-r text-slate-800">{nameWithBadge(row.name, trainingMap[row.name])}</td>
                             <td className="p-4 text-center border-r">
                                 <span className="inline-flex items-baseline gap-1 border border-slate-200 bg-white px-2 py-1 rounded">
                                     <span className="font-bold">{c.h}</span> <span className="text-[10px] text-slate-400">HRS</span>
@@ -86,6 +97,7 @@ export default function ArchiveSchedulePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [branchStaffData, setBranchStaffData] = useState<Record<string, string[]>>({});
   const [branchManagerData, setBranchManagerData] = useState<Record<string, string[]>>({});
+  const [trainingMap, setTrainingMap] = useState<Record<string, { start?: string; end?: string }>>({});
   
   // --- FILTER STATES ---
   const [filterBranch, setFilterBranch] = useState<string>("");
@@ -108,18 +120,25 @@ export default function ArchiveSchedulePage() {
     const fetchStaff = async () => {
       const res = await fetch('/api/branch-staff?include=all');
       const staffList = await res.json();
+      if (!Array.isArray(staffList)) return;
       const grouped: Record<string, string[]> = {};
       const managers: Record<string, string[]> = {};
+      const tmap: Record<string, { start?: string; end?: string }> = {};
       staffList.forEach((s: any) => {
+        if (!s.branch) return;
         if (!grouped[s.branch]) grouped[s.branch] = [];
         grouped[s.branch].push(s.name);
         if (s.role && s.role.startsWith('branch_manager')) {
           if (!managers[s.branch]) managers[s.branch] = [];
           managers[s.branch].push(s.name);
         }
+        if (s.trainingStartDate || s.trainingEndDate) {
+          tmap[s.name] = { start: s.trainingStartDate ?? undefined, end: s.trainingEndDate ?? undefined };
+        }
       });
       setBranchStaffData(grouped);
       setBranchManagerData(managers);
+      setTrainingMap(tmap);
     };
     fetchSchedules();
     fetchStaff();
@@ -191,7 +210,6 @@ export default function ArchiveSchedulePage() {
 
       uniqueEmployeesToTrack.forEach((emp: string) => {
         let coachingHoursForDay = 0;
-        let explicitExecHoursForDay = 0;
         let workedThatDay = false;
 
         getTimeSlotsForDay(day, selectedRecord.branch).forEach((slot: string) => {
@@ -199,24 +217,14 @@ export default function ArchiveSchedulePage() {
           COLUMNS.forEach((col) => {
             if (validData[`${day}-${slot}-${col.id}`] === emp) {
               workedThatDay = true;
-              if (col.type === "coach") {
-                  const slotDuration = isAdminSlot(slot, selectedRecord.branch) ? 0.25 : 1.25;
-                  coachingHoursForDay += slotDuration;
-              } else if (col.type === "exec") {
-                  const slotDuration = isAdminSlot(slot, selectedRecord.branch) ? 0.25 : 1.25;
-                  explicitExecHoursForDay += slotDuration;
-              }
+              if (col.type === "coach") coachingHoursForDay += isAdminSlot(slot, selectedRecord.branch) ? 0.25 : 1.25;
             }
           });
         });
-        
+
         if (workedThatDay) {
           staffStats[emp].coachHrs += coachingHoursForDay;
-          if (explicitExecHoursForDay > 0) {
-             staffStats[emp].execHrs += explicitExecHoursForDay;
-          } else {
-             staffStats[emp].execHrs += Math.max(0, dailyTarget - coachingHoursForDay);
-          }
+          staffStats[emp].execHrs += Math.max(0, dailyTarget - coachingHoursForDay);
           staffStats[emp].total = staffStats[emp].coachHrs + staffStats[emp].execHrs;
         }
       });
@@ -336,7 +344,7 @@ export default function ArchiveSchedulePage() {
                                         // Show manager name for slots where manager is on duty
                                         managerName ? (
                                           <span className={`inline-block w-full px-2 py-1.5 rounded text-xs font-bold ${getStaffColorByIndex(managerName, branchStaff)}`}>
-                                            {managerName}
+                                            {nameWithBadge(managerName, trainingMap[managerName])}
                                           </span>
                                         ) : (
                                           <span className="text-slate-300 font-bold">-</span>
@@ -362,7 +370,7 @@ export default function ArchiveSchedulePage() {
                                         const bgColor = name && name !== "None" ? getStaffColorByIndex(name, branchStaff) : (col.type === 'exec' ? 'bg-slate-50 text-slate-300' : 'bg-white text-slate-300');
                                         return (
                                             <td key={col.id} className={`p-3 border-r border-b border-slate-200 text-center font-bold transition-colors ${bgColor}`}>
-                                                {displayValue}
+                                                {displayValue !== "-" ? nameWithBadge(displayValue, trainingMap[displayValue]) : displayValue}
                                             </td>
                                         );
                                       })}
@@ -381,7 +389,7 @@ export default function ArchiveSchedulePage() {
                 );
               })()}
 
-              <SummaryTable data={calculateHoursForData()} />
+              <SummaryTable data={calculateHoursForData()} trainingMap={trainingMap} />
             </div>
           </div>
         </main>
