@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { isHR, isAcademy } from "@/lib/roles";
+import { isHR, isAcademy, isBranchManager, isFullTime, isPartTime } from "@/lib/roles";
 
 interface DashboardCard {
   id: string;
@@ -115,13 +115,23 @@ interface DashboardDetailProps {
 export default function DashboardDetail({ id }: DashboardDetailProps) {
   const router = useRouter();
   const { data: session } = useSession();
-  const userIsHR = isHR((session?.user as { role?: unknown } | undefined)?.role);
-  const userIsAcademy = isAcademy((session?.user as { role?: unknown } | undefined)?.role);
+  const role = (session?.user as { role?: unknown } | undefined)?.role;
+  const userIsBM = isBranchManager(role);
+  const userIsHR = isHR(role);
+  const userIsAcademy = isAcademy(role);
+  const userIsEmployee = isFullTime(role) || isPartTime(role);
   const dashboard = dashboards.find((d) => d.id === id);
 
-  // For HR and Academy users on the HRMS hub, allow only the Employee Dashboard card.
-  const isItemEnabled = (href: string) =>
-    !((userIsHR || userIsAcademy) && id === "hrms" && href !== "/dashboard-employee-management");
+  // Per-role sub-item visibility on the HRMS hub. Roles not handled below
+  // (SUPER_ADMIN, ADMIN, HOD, ...) see every sub-item enabled.
+  const isItemEnabled = (href: string) => {
+    if (id !== "hrms") return true;
+    if (userIsBM)       return href === "/manpower-schedule";
+    if (userIsHR)       return href !== "/manpower-schedule";
+    if (userIsAcademy)  return href === "/dashboard-employee-management";
+    if (userIsEmployee) return href === "/manpower-cost-report";
+    return true;
+  };
 
   if (!dashboard) {
     return (

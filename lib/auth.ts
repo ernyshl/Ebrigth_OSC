@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/nextauth';
 import { NextResponse } from 'next/server';
 import type { Session } from 'next-auth';
-import { hasAnyRole, isAdmin, isHOD, isHR, isAcademy, type Role } from '@/lib/roles';
+import { hasAnyRole, isAdmin, isHOD, isHR, isAcademy, isSuperAdmin, type Role } from '@/lib/roles';
 
 export type AuthResult =
   | { session: Session; error: null }

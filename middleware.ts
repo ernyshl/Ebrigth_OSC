@@ -1,6 +1,6 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
-import { normalizeRole, ADMIN_ROLES, MANAGEMENT_ROLES, ROLES, type Role } from "@/lib/roles";
+import { normalizeRole, ROLES, type Role } from "@/lib/roles";
 
 // Path-prefix-based role rules. First matching prefix wins — so list more
 // specific prefixes before shorter ones that would also match.
@@ -18,21 +18,19 @@ import { normalizeRole, ADMIN_ROLES, MANAGEMENT_ROLES, ROLES, type Role } from "
 //   FULL_TIME / PART_TIME → /manpower-schedule/archive (Manpower Cost Report
 //                   is login-only and reachable as before)
 const ROLE_RULES: Array<{ prefix: string; allowed: readonly Role[] }> = [
-  // Admin-only pages (user / account administration). Academy gets in here too,
-  // because the user-management route hosts the per-coach edit form they need
-  // to set training dates from. The route handler narrows what they can see/edit.
-  { prefix: "/user-management",               allowed: [...ADMIN_ROLES, ROLES.ACADEMY] },
-  { prefix: "/account-management",            allowed: ADMIN_ROLES },
-  { prefix: "/register-employee",             allowed: ADMIN_ROLES },
+  { prefix: "/user-management",               allowed: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR, ROLES.ACADEMY] },
+  { prefix: "/account-management",            allowed: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR] },
+  { prefix: "/register-employee",             allowed: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR] },
+  { prefix: "/dashboard-employee-management", allowed: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR, ROLES.HOD, ROLES.ACADEMY] },
 
-  // Management-level pages. Employee dashboard is also visible to Academy
-  // (read-mostly view of FT/PT coaches). Manpower, HR, on/offboarding remain
-  // management-only.
-  { prefix: "/dashboard-employee-management", allowed: [...MANAGEMENT_ROLES, ROLES.ACADEMY] },
-  { prefix: "/manpower-schedule",             allowed: MANAGEMENT_ROLES },
-  { prefix: "/hr-dashboard",                  allowed: MANAGEMENT_ROLES },
-  { prefix: "/onboarding",                    allowed: MANAGEMENT_ROLES },
-  { prefix: "/offboarding",                   allowed: MANAGEMENT_ROLES },
+  // /archive must come BEFORE /manpower-schedule so PT/FT can read archives
+  // even though the parent path is otherwise blocked for them.
+  { prefix: "/manpower-schedule/archive",     allowed: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.BRANCH_MANAGER, ROLES.HOD, ROLES.FULL_TIME, ROLES.PART_TIME] },
+  { prefix: "/manpower-schedule",             allowed: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.BRANCH_MANAGER, ROLES.HOD] },
+
+  { prefix: "/hr-dashboard",                  allowed: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR, ROLES.HOD] },
+  { prefix: "/onboarding",                    allowed: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR, ROLES.HOD] },
+  { prefix: "/offboarding",                   allowed: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.HR, ROLES.HOD] },
 ];
 
 function matchRule(pathname: string) {

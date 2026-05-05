@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { isBranchManager, isAcademy } from "@/lib/roles";
+import { isBranchManager, isAcademy, isFullTime, isPartTime, isSuperAdmin } from "@/lib/roles";
 
 interface DashboardCard {
   id: string;
@@ -94,7 +94,20 @@ const dashboards: DashboardCard[] = [
 export default function DashboardHome({ userRole, userEmail }: { userRole?: string; userEmail?: string }) {
   const branchManager = isBranchManager(userRole) || (userEmail?.toLowerCase().includes("ebright") ?? false);
   const isAcademyUser = isAcademy(userRole);
-  const accessibleCount = (branchManager || isAcademyUser) ? 1 : dashboards.length;
+  const isEmployeeUser = isFullTime(userRole) || isPartTime(userRole);
+
+  // Per-role allowlists at the top-level dashboard tile grid. Roles not listed
+  // here see every tile (ADMIN, HR, HOD, etc.). SUPER_ADMIN is checked first
+  // so its god-mode bypass is not overridden by the @ebright email fallback
+  // that tags branch managers below.
+  const tileAllowlist: ReadonlySet<string> | null =
+    isSuperAdmin(userRole) ? null :
+    branchManager          ? new Set(["hrms", "inventory"]) :
+    isAcademyUser          ? new Set(["hrms", "inventory"]) :
+    isEmployeeUser         ? new Set(["hrms"]) :
+    null;
+
+  const accessibleCount = tileAllowlist ? tileAllowlist.size : dashboards.length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -108,9 +121,7 @@ export default function DashboardHome({ userRole, userEmail }: { userRole?: stri
       <main className="max-w-5xl mx-auto px-4 py-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {dashboards.map((dashboard) => {
-            const isDisabled =
-              (branchManager && !["hrms", "inventory"].includes(dashboard.id)) ||
-              (isAcademyUser && dashboard.id !== "hrms");
+            const isDisabled = tileAllowlist !== null && !tileAllowlist.has(dashboard.id);
 
 const targetHref = 
   dashboard.id === "academy" ? "/academy" : 
