@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession, requireRole, assertSameBranch, canSeeAllBranches } from '@/lib/auth';
-import { ADMIN_ROLES } from '@/lib/roles';
+import { ADMIN_ROLES, isAcademy, isAdmin, isHR } from '@/lib/roles';
 import { isValidEmployeeId } from '@/lib/employeeId';
 
 // Map BranchStaff DB row → Employee shape expected by the frontend
@@ -39,6 +39,28 @@ function toEmployee(s: Record<string, unknown>) {
     biometricTemplate: (s.biometricTemplate as string) || null,
     registeredAt: s.createdAt ? new Date(s.createdAt as string).toISOString() : '',
     updatedAt: s.updatedAt ? new Date(s.updatedAt as string).toISOString() : '',
+    trainingStartDate: (s.trainingStartDate as string) || '',
+    trainingEndDate: (s.trainingEndDate as string) || '',
+  };
+}
+
+// Strict allowlist mapper for ACADEMY callers. Returns ONLY the 10 keys the
+// Academy role is permitted to see. Sensitive fields (NRIC, DOB, home_address,
+// bank, emergency contact, university, gender, nickname, employeeId,
+// biometricTemplate, accessStatus, probation, endDate, rate, hire_date,
+// signed_date, employment_type, email) MUST NOT leak over the wire.
+function toEmployeeForAcademy(s: Record<string, unknown>) {
+  return {
+    id: String(s.id),
+    fullName: (s.name as string) || '',
+    phone: (s.phone as string) || '',
+    branch: (s.branch as string) || '',
+    role: (s.role as string) || '',
+    contract: (s.contract as string) || '',
+    startDate: (s.start_date as string) || '',
+    Emp_Status: (s.status as string) || '',
+    trainingStartDate: (s.trainingStartDate as string) || '',
+    trainingEndDate: (s.trainingEndDate as string) || '',
   };
 }
 
@@ -65,16 +87,25 @@ export async function GET(request: Request) {
     where.branch = userBranch ?? '__none__';
   }
 
+  // Academy callers are restricted to FT/PT coaches. This intersects with any
+  // client-supplied role filter, so passing role=BM yields an empty result.
+  const callerRole = (session.user as { role?: unknown } | undefined)?.role;
+  if (isAcademy(callerRole)) {
+    where.role = { in: ["FT - Coach", "PT - Coach"] };
+  }
+
   const staff = await prisma.branchStaff.findMany({ where, orderBy: { id: 'asc' } });
 
-  let results = staff.map(toEmployee);
+  const mapper = isAcademy(callerRole) ? toEmployeeForAcademy : toEmployee;
+  let results = staff.map(mapper);
 
   if (search) {
-    results = results.filter(
-      e =>
-        e.fullName.toLowerCase().includes(search) ||
-        e.email.toLowerCase().includes(search) ||
-        e.employeeId.toLowerCase().includes(search)
+    results = results.filter((e: Record<string, unknown>) =>
+      isAcademy(callerRole)
+        ? (e.fullName as string).toLowerCase().includes(search)
+        : (e.fullName as string).toLowerCase().includes(search) ||
+          ((e.email as string) || '').toLowerCase().includes(search) ||
+          ((e.employeeId as string) || '').toLowerCase().includes(search)
     );
   }
 
@@ -161,8 +192,15 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const { session, error } = await requireRole(ADMIN_ROLES);
+  const { session, error } = await requireSession();
   if (error) return error;
+
+  const callerRole = (session.user as { role?: unknown } | undefined)?.role;
+  const isAdminEdit = isAdmin(callerRole);
+  const isAcademyEdit = isAcademy(callerRole);
+  if (!isAdminEdit && !isAcademyEdit) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   try {
     const body = await request.json();
@@ -170,25 +208,67 @@ export async function PUT(request: Request) {
             homeAddress, contract, startDate, endDate, probation, rate, accessStatus,
             Emc_Number, Emc_Email, Emc_Relationship, Signed_Date, Emp_Hire_Date,
             Emp_Type, Emp_Status, Bank, Bank_Name, Bank_Account, University,
-            employeeId, biometricTemplate } = body;
+            employeeId, biometricTemplate,
+            trainingStartDate, trainingEndDate } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Employee ID is required' }, { status: 400 });
     }
 
-    if (branch !== undefined) {
-      const branchGuard = assertSameBranch(session, branch);
-      if (branchGuard) return branchGuard;
+    if (isAcademyEdit) {
+      const allowedKeys = new Set(['id', 'trainingStartDate', 'trainingEndDate']);
+      const extraKeys = Object.keys(body).filter((k) => !allowedKeys.has(k));
+      if (extraKeys.length > 0) {
+        return NextResponse.json(
+          { error: `Academy cannot edit: ${extraKeys.join(', ')}` },
+          { status: 403 },
+        );
+      }
+      const target = await prisma.branchStaff.findUnique({
+        where: { id: parseInt(id) },
+        select: { role: true },
+      });
+      if (!target || !['FT - Coach', 'PT - Coach'].includes(target.role || '')) {
+        return NextResponse.json(
+          { error: 'Academy can only edit FT-Coach or PT-Coach' },
+          { status: 403 },
+        );
+      }
     }
-    const existing = await prisma.branchStaff.findUnique({
-      where: { id: parseInt(id) },
-      select: { branch: true },
-    });
-    if (!existing) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    if (isHR(callerRole) && (
+      body.trainingStartDate !== undefined ||
+      body.trainingEndDate !== undefined
+    )) {
+      return NextResponse.json(
+        { error: 'HR cannot edit training fields in v1' },
+        { status: 403 },
+      );
     }
-    const idGuard = assertSameBranch(session, existing.branch);
-    if (idGuard) return idGuard;
+
+    // End date must be on or after start date (when both are supplied).
+    if (trainingStartDate && trainingEndDate && trainingStartDate > trainingEndDate) {
+      return NextResponse.json(
+        { error: 'Training end date must be on or after start date' },
+        { status: 400 },
+      );
+    }
+
+    if (!isAcademyEdit) {
+      if (branch !== undefined) {
+        const branchGuard = assertSameBranch(session, branch);
+        if (branchGuard) return branchGuard;
+      }
+      const existing = await prisma.branchStaff.findUnique({
+        where: { id: parseInt(id) },
+        select: { branch: true },
+      });
+      if (!existing) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      }
+      const idGuard = assertSameBranch(session, existing.branch);
+      if (idGuard) return idGuard;
+    }
 
     if (employeeId !== undefined) {
       if (!isValidEmployeeId(employeeId)) {
@@ -233,6 +313,8 @@ export async function PUT(request: Request) {
         ...(Bank_Account !== undefined && { bank_account: Bank_Account }),
         ...(University !== undefined && { university: University }),
         ...(employeeId !== undefined && { employeeId }),
+        ...(trainingStartDate !== undefined && { trainingStartDate: trainingStartDate || null }),
+        ...(trainingEndDate !== undefined && { trainingEndDate: trainingEndDate || null }),
       },
     });
 

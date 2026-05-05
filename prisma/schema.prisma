@@ -86,6 +86,8 @@ model BranchStaff {
   probation          String?
   rate               String?
   updatedAt          DateTime? @updatedAt
+  trainingStartDate  String?
+  trainingEndDate    String?
 
   @@map("BranchStaff")
 }
