@@ -60,10 +60,17 @@ export const authOptions: NextAuthOptions = {
         const valid = await bcrypt.compare(credentials.password, user.passwordHash);
         if (!valid) return null;
 
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { lastLoggedInAt: new Date() },
-        });
+        // Non-fatal: if the column is missing on this environment or the row
+        // lives only behind the FDW view, this update will throw — but a
+        // best-effort login-tracking write must never block sign-in.
+        try {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { lastLoggedInAt: new Date() },
+          });
+        } catch {
+          /* swallow — sign-in proceeds without the timestamp update */
+        }
 
         return {
           id:         user.id.toString(),
