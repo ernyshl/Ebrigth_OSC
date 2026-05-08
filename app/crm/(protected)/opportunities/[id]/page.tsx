@@ -75,7 +75,8 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
 
   if (
     (cExt.externalSourceTable === 'raw_wix_leads' ||
-     cExt.externalSourceTable === 'master_leads_base') &&
+     cExt.externalSourceTable === 'master_leads_base' ||
+     cExt.externalSourceTable === 'trial_form') &&
     cExt.externalSourceId?.includes('#')
   ) {
     const parentUuid = cExt.externalSourceId.split('#')[0]
