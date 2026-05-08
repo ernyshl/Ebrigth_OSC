@@ -86,7 +86,7 @@ export async function GET() {
 
   try {
     const users = await prisma.user.findMany({
-      select: { id: true, name: true, email: true, role: true, branchName: true, status: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, branchName: true, status: true, createdAt: true, lastLoggedInAt: true },
       orderBy: { createdAt: 'desc' },
     });
     return NextResponse.json(users);
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
       data: { name, email, passwordHash, role, branchName, status: 'ACTIVE' },
-      select: { id: true, name: true, email: true, role: true, branchName: true, status: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, branchName: true, status: true, createdAt: true, lastLoggedInAt: true },
     });
     return NextResponse.json(user, { status: 201 });
   } catch (err) {
@@ -148,7 +148,7 @@ export async function PUT(req: NextRequest) {
     const user = await prisma.user.update({
       where: { id },
       data: updateData,
-      select: { id: true, name: true, email: true, role: true, branchName: true, status: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, branchName: true, status: true, createdAt: true, lastLoggedInAt: true },
     });
     return NextResponse.json(user);
   } catch (err) {
@@ -180,7 +180,7 @@ export async function PATCH(req: NextRequest) {
     const user = await prisma.user.update({
       where: { id },
       data: updateData,
-      select: { id: true, name: true, email: true, role: true, branchName: true, status: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, branchName: true, status: true, createdAt: true, lastLoggedInAt: true },
     });
     return NextResponse.json(user);
   } catch (err) {

@@ -16,14 +16,15 @@ datasource db {
 // ============================================================
 
 model User {
-  id           Int      @id @default(autoincrement())
-  email        String   @unique
-  passwordHash String
-  role         String   @default("BRANCH_MANAGER")
-  branchName   String?
-  createdAt    DateTime @default(now())
-  name         String?
-  status       String   @default("ACTIVE")
+  id             Int       @id @default(autoincrement())
+  email          String    @unique
+  passwordHash   String
+  role           String    @default("BRANCH_MANAGER")
+  branchName     String?
+  createdAt      DateTime  @default(now())
+  name           String?
+  status         String    @default("ACTIVE")
+  lastLoggedInAt DateTime?
 }
 
 model ManpowerSchedule {
