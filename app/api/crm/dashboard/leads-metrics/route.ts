@@ -43,6 +43,21 @@ async function resolveTenantId(): Promise<string | null> {
   return first?.id ?? null
 }
 
+/**
+ * Branches whose lead activity is hidden from the elevated (super-admin)
+ * dashboard view. Currently: Ebright OD is the internal stress-test /
+ * training branch — its leads shouldn't pollute headline numbers, regional
+ * totals, or the "Main" pipeline.
+ *
+ * The OD branch manager still sees their own data normally: when a
+ * super-admin uses topbar "view as branch" to inspect OD, the request goes
+ * through the non-elevated code path which respects the explicit branchId
+ * and bypasses this exclusion.
+ */
+const ELEVATED_DASHBOARD_EXCLUDE = new Set<string>([
+  '00 Ebright OD',
+])
+
 /** Branch short-code lookup — matches the Data Studio labels */
 // Keys are stored branch names (prefixed after rename migration).
 const BRANCH_CODES: Record<string, string> = {
@@ -259,12 +274,16 @@ export async function GET(req: NextRequest) {
       categoryOrderByPipeline.set(s.pipelineId, bucket)
     }
 
-    // Fetch branches. Elevated users get the full canonical list; non-elevated
-    // users only get the branches they're explicitly linked to. Even if those
-    // branches aren't in BRANCH_CODES, they show up in `main` (their stats)
-    // but never in the regional cards.
+    // Fetch branches. Elevated users get the full canonical list MINUS
+    // the dashboard-excluded ones (OD etc.); non-elevated users only get
+    // the branches they're explicitly linked to. Even if those branches
+    // aren't in BRANCH_CODES, they show up in `main` (their stats) but
+    // never in the regional cards.
+    const elevatedBranchNames = Object.keys(BRANCH_CODES).filter(
+      (n) => !ELEVATED_DASHBOARD_EXCLUDE.has(n),
+    )
     const branchWhere = elevated
-      ? { tenantId, name: { in: Object.keys(BRANCH_CODES) } }
+      ? { tenantId, name: { in: elevatedBranchNames } }
       : { tenantId, id: { in: allowedBranchIds ?? [] } }
     const branches = await prisma.crm_branch.findMany({
       where: branchWhere,
