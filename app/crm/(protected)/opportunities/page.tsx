@@ -27,31 +27,31 @@ export default async function OpportunitiesPage() {
     redirect('/dashboards/crm')
   }
 
-  // Canonical branch names (as stored in DB after the rename migration).
+  // Canonical branch names (GHL numbering). HR removed — no pipeline.
+  // Dataran Puchong Utama removed from new dropdowns; historical leads
+  // tied to its UUID still display via the topbar / kanban.
   const FORM_BRANCHES = [
-    'Ebright HR',
     '00 Ebright OD',
-    '01 Ebright Public Speaking (Rimbayu)',
-    '02 Ebright Public Speaking (Klang)',
-    '03 Ebright Public Speaking (Shah Alam)',
-    '04 Ebright Public Speaking (Setia Alam)',
-    '05 Ebright Public Speaking (Denai Alam)',
-    '06 Ebright Public Speaking (Eco Grandeur)',
-    '07 Ebright Public Speaking (Subang Taipan)',
-    '08 Ebright Public Speaking (Danau Kota)',
-    '09 Ebright Public Speaking (Kota Damansara)',
-    '10 Ebright Public Speaking (Ampang)',
-    '11 Ebright Public Speaking (Sri Petaling)',
-    '12 Ebright Public Speaking (Bandar Tun Hussein Onn)',
-    '13 Ebright Public Speaking (Kajang TTDI Grove)',
-    '14 Ebright Public Speaking (Taman Sri Gombak)',
-    '15 Ebright Public Speaking (Putrajaya)',
-    '16 Ebright Public Speaking (Kota Warisan)',
-    '17 Ebright Public Speaking (Bandar Baru Bangi)',
-    '18 Ebright Public Speaking (Cyberjaya)',
-    '19 Ebright Public Speaking (Bandar Seri Putra)',
-    '20 Ebright Public Speaking (Dataran Puchong Utama)',
-    '21 Ebright Public Speaking (Online)',
+    '01 Ebright Public Speaking (Online)',
+    '02 Ebright Public Speaking (Subang Taipan)',
+    '03 Ebright Public Speaking (Setia Alam)',
+    '04 Ebright Public Speaking (Sri Petaling)',
+    '05 Ebright Kids Public Speaking (Kota Damansara)',
+    '06 Ebright Public Speaking (Putrajaya)',
+    '07 Ebright Kids Public Speaking (Ampang)',
+    '08 Ebright Public Speaking (Cyberjaya)',
+    '09 Ebright Public Speaking (Klang)',
+    '10 Ebright Kids Public Speaking (Denai Alam)',
+    '11 Ebright Public Speaking (Bandar Baru Bangi)',
+    '12 Ebright Public Speaking (Danau Kota)',
+    '13 Ebright Public Speaking (Shah Alam)',
+    '14 Ebright Public Speaking (Bandar Tun Hussein Onn)',
+    '15 Ebright Public Speaking (Eco Grandeur)',
+    '16 Ebright Public Speaking (Bandar Seri Putra)',
+    '17 Ebright Public Speaking Academy (Bandar Rimbayu)',
+    '18 Ebright Public Speaking Academy (Taman Sri Gombak)',
+    '19 Ebright Public Speaking Academy (Kota Warisan)',
+    '20 Ebright Public Speaking Academy (TTDI Grove)',
   ]
 
   // Parallelise every independent query — the remote Postgres is on a round-
