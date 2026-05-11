@@ -217,6 +217,7 @@ export async function getPipelineKanban(
               childName2: true,
               childAge2: true,
               parentFullName: true,
+              campaignName: true,
               preferredBranchId: true,
               leadSourceId: true,
               leadSource: {
