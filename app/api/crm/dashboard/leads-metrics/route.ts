@@ -45,17 +45,21 @@ async function resolveTenantId(): Promise<string | null> {
 
 /**
  * Branches whose lead activity is hidden from the elevated (super-admin)
- * dashboard view. Currently: Ebright OD is the internal stress-test /
- * training branch — its leads shouldn't pollute headline numbers, regional
- * totals, or the "Main" pipeline.
+ * dashboard view. Two categories:
+ *   - Internal / admin branches whose leads aren't real sales pipeline
+ *     (Ebright OD is the stress-test / training branch).
+ *   - Upcoming branches that exist in CRM but haven't opened yet
+ *     (Dataran Puchong Utama, Johor). Their leads are recorded but excluded
+ *     from regional totals until they're operationally active.
  *
- * The OD branch manager still sees their own data normally: when a
- * super-admin uses topbar "view as branch" to inspect OD, the request goes
- * through the non-elevated code path which respects the explicit branchId
- * and bypasses this exclusion.
+ * The branch manager for any of these still sees their own data normally:
+ * when a super-admin uses topbar "view as branch" to inspect them, the
+ * request goes through the non-elevated code path which respects the
+ * explicit branchId and bypasses this exclusion.
  */
 const ELEVATED_DASHBOARD_EXCLUDE = new Set<string>([
   '00 Ebright OD',
+  '20 Ebright Public Speaking (Dataran Puchong Utama)',
 ])
 
 /** Branch short-code lookup — matches the Data Studio labels.
@@ -81,7 +85,7 @@ const BRANCH_CODES: Record<string, string> = {
   '17 Ebright Public Speaking Academy (Bandar Rimbayu)': 'RBY',
   '18 Ebright Public Speaking Academy (Taman Sri Gombak)': 'TSG',
   '19 Ebright Public Speaking Academy (Kota Warisan)': 'KW',
-  '20 Ebright Public Speaking Academy (TTDI Grove)': 'TTG',
+  '20 Ebright Public Speaking Academy (TTDI Grove, Kajang)': 'KTG',
 }
 
 // Regions preserved geographically — same branches per region as before, just
@@ -104,7 +108,7 @@ const REGIONS: Record<'A' | 'B' | 'C', string[]> = {
     '07 Ebright Kids Public Speaking (Ampang)',
     '04 Ebright Public Speaking (Sri Petaling)',
     '14 Ebright Public Speaking (Bandar Tun Hussein Onn)',
-    '20 Ebright Public Speaking Academy (TTDI Grove)',
+    '20 Ebright Public Speaking Academy (TTDI Grove, Kajang)',
     '18 Ebright Public Speaking Academy (Taman Sri Gombak)',
   ],
   C: [
