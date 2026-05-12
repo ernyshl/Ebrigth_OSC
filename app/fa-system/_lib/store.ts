@@ -72,6 +72,8 @@ interface FAStore {
     sessionId: string;
     studentId: string;
     branch: BranchCode;
+    /** Grade the student is being appraised for (BM picks this when inviting). */
+    targetGrade: number;
     invitedBy: string;
     initialStatus?: InvitationStatus;
     allowOverQuota?: boolean;
@@ -300,6 +302,7 @@ export const useFAStore = create<FAStore>()(
         sessionId,
         studentId,
         branch,
+        targetGrade,
         invitedBy,
         initialStatus,
         allowOverQuota,
@@ -313,6 +316,7 @@ export const useFAStore = create<FAStore>()(
               sessionId,
               studentId,
               branch,
+              targetGrade,
               invitedBy,
               initialStatus,
               allowOverQuota,
@@ -337,9 +341,23 @@ export const useFAStore = create<FAStore>()(
         });
         if (!r.ok) throw new Error(`Update invitation failed (HTTP ${r.status})`);
         const updated = r.data;
-        set((s) => ({
-          invitations: s.invitations.map((i) => (i.id === id ? updated : i)),
-        }));
+        set((s) => {
+          const invitations = s.invitations.map((i) => (i.id === id ? updated : i));
+          // When attendance is marked, persist the picked grade onto the
+          // student's faHistory so the FA tick stays after the event.
+          if (status === "attended" && updated.targetGrade != null) {
+            const students = s.students.map((st) =>
+              st.id === updated.studentId
+                ? {
+                    ...st,
+                    faHistory: { ...st.faHistory, [updated.targetGrade]: true },
+                  }
+                : st
+            );
+            return { invitations, students };
+          }
+          return { invitations };
+        });
       },
 
       removeInvitation: async (id) => {

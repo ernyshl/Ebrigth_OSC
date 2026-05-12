@@ -112,6 +112,9 @@ export function WalkInModal({ open, onClose, event, preferredDay, onSuccess }: W
         sessionId: session.id,
         studentId: student.id,
         branch,
+        // Walk-ins default to the student's current grade. Add a picker here
+        // later if walk-ins need to clear backlog grades too.
+        targetGrade: student.grade,
         invitedBy: user.id,
         initialStatus: "confirmed",
         allowOverQuota: true,
