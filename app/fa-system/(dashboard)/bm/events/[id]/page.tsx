@@ -94,6 +94,9 @@ export default function BMEventDetailPage() {
     const q = quotas.find(qq => qq.sessionId === s.id && qq.branch === user.branch);
     return sum + (q?.quota || 0);
   }, 0);
+  // Marketing sets a confirm target (quota). BMs may invite up to 3× that
+  // because we expect ~1 in 3 students to actually confirm.
+  const totalBranchInviteCap = totalBranchQuota * 3;
   const totalBranchInvitations = invitations.filter(i => i.branch === user.branch).length;
   const totalBranchConfirmed = invitations.filter(
     i => i.branch === user.branch && (i.status === "confirmed" || i.status === "attended")
@@ -130,8 +133,8 @@ export default function BMEventDetailPage() {
       <div className="grid grid-cols-4 gap-4 mb-8">
         <BMEventStatCard label="Your sessions" value={bmSessions.length} />
         <BMEventStatCard label="Total slots" value={totalBranchQuota} />
-        <BMEventStatCard label="Invited" value={`${totalBranchInvitations} / ${totalBranchQuota}`} />
-        <BMEventStatCard label="Confirmed" value={totalBranchConfirmed} />
+        <BMEventStatCard label="Invited" value={`${totalBranchInvitations} / ${totalBranchInviteCap}`} />
+        <BMEventStatCard label="Confirmed" value={`${totalBranchConfirmed} / ${totalBranchQuota}`} />
       </div>
 
       {!canInvite && event.status === "closed" && (
@@ -173,11 +176,12 @@ export default function BMEventDetailPage() {
                     <div className="space-y-1.5">
                       {daySessions.map(session => {
                         const quota = quotas.find(q => q.sessionId === session.id && q.branch === user.branch)!;
+                        const inviteCap = quota.quota * 3;
                         const invited = invitations.filter(
                           i => i.sessionId === session.id && i.branch === user.branch
                         ).length;
                         const isSelected = session.id === selectedSessionId;
-                        const isFull = invited >= quota.quota;
+                        const isFull = invited >= inviteCap;
                         return (
                           <button
                             key={session.id}
@@ -200,13 +204,13 @@ export default function BMEventDetailPage() {
                             )}
                             <div className="flex items-center justify-between gap-2 text-xs">
                               <span className={isFull ? "text-success font-medium" : "text-ink-500"}>
-                                {invited} / {quota.quota} slot{quota.quota !== 1 ? "s" : ""}
+                                {invited} / {inviteCap} invite{inviteCap !== 1 ? "s" : ""}
                               </span>
                               {isFull ? (
                                 <StatusPill tone="success" showDot={false}>Full</StatusPill>
                               ) : (
                                 <span className="text-warning font-medium">
-                                  {quota.quota - invited} open
+                                  {inviteCap - invited} open
                                 </span>
                               )}
                             </div>
@@ -255,14 +259,18 @@ export default function BMEventDetailPage() {
           quota={selectedQuota!.quota}
           currentInvitations={sessionInvitations}
           allInvitationsForEvent={invitations.filter(i => i.branch === user.branch)}
-          onInvite={(studentIds) => {
-            studentIds.forEach(studentId => {
+          onInvite={(picks) => {
+            picks.forEach(({ studentId, targetGrade }) => {
               inviteStudent({
                 eventId: event.id,
                 sessionId: selectedSession.id,
                 studentId,
                 branch: user.branch!,
+                targetGrade,
                 invitedBy: user.id,
+                // Allow exceeding the marketing-set confirm target (the
+                // quota field) up to 3× of it. The modal enforces the cap.
+                allowOverQuota: true,
               });
             });
             setInviteModalOpen(false);
