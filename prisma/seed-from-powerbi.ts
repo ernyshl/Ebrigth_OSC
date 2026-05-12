@@ -2,8 +2,8 @@
 /**
  * One-shot seed for the demo:
  *   1. Tenant   → Ebright Sdn Bhd (slug: ebright)
- *   2. Branches → 21 English-Speaking + Ebright HR
- *   3. Lead pipeline (16 stages) cloned onto every English branch
+ *   2. Branches → 00 Ebright OD + 20 Public Speaking branches (GHL numbering)
+ *   3. Lead pipeline (16 stages) cloned onto every branch
  *   4. Lead sources → Meta, TikTok, Wix, Website, Walk-In, Referral,
  *                    Self-Generated, Others
  *   5. Super-Admin user → admin@ebright.my / admin123
@@ -44,30 +44,33 @@ if (!LEADS_DB_URL) {
 const TENANT_SLUG = 'ebright'
 const TENANT_NAME = 'Ebright Sdn Bhd'
 
+// GHL-aligned numbering. "Kids" / "Academy" wording is preserved exactly as
+// shown in the GHL admin UI so the dropdowns match what staff see there.
+// HR is excluded — pipelines / dashboards never need it. Dataran Puchong Utama
+// is NOT in the GHL list; we no longer create a row for it (historical data
+// already in CRM stays routable via the existing UUID).
 const BRANCHES = [
-  'Ebright HR',
   '00 Ebright OD',
-  '01 Ebright Public Speaking (Rimbayu)',
-  '02 Ebright Public Speaking (Klang)',
-  '03 Ebright Public Speaking (Shah Alam)',
-  '04 Ebright Public Speaking (Setia Alam)',
-  '05 Ebright Public Speaking (Denai Alam)',
-  '06 Ebright Public Speaking (Eco Grandeur)',
-  '07 Ebright Public Speaking (Subang Taipan)',
-  '08 Ebright Public Speaking (Danau Kota)',
-  '09 Ebright Public Speaking (Kota Damansara)',
-  '10 Ebright Public Speaking (Ampang)',
-  '11 Ebright Public Speaking (Sri Petaling)',
-  '12 Ebright Public Speaking (Bandar Tun Hussein Onn)',
-  '13 Ebright Public Speaking (Kajang TTDI Grove)',
-  '14 Ebright Public Speaking (Taman Sri Gombak)',
-  '15 Ebright Public Speaking (Putrajaya)',
-  '16 Ebright Public Speaking (Kota Warisan)',
-  '17 Ebright Public Speaking (Bandar Baru Bangi)',
-  '18 Ebright Public Speaking (Cyberjaya)',
-  '19 Ebright Public Speaking (Bandar Seri Putra)',
-  '20 Ebright Public Speaking (Dataran Puchong Utama)',
-  '21 Ebright Public Speaking (Online)',
+  '01 Ebright Public Speaking (Online)',
+  '02 Ebright Public Speaking (Subang Taipan)',
+  '03 Ebright Public Speaking (Setia Alam)',
+  '04 Ebright Public Speaking (Sri Petaling)',
+  '05 Ebright Kids Public Speaking (Kota Damansara)',
+  '06 Ebright Public Speaking (Putrajaya)',
+  '07 Ebright Kids Public Speaking (Ampang)',
+  '08 Ebright Public Speaking (Cyberjaya)',
+  '09 Ebright Public Speaking (Klang)',
+  '10 Ebright Kids Public Speaking (Denai Alam)',
+  '11 Ebright Public Speaking (Bandar Baru Bangi)',
+  '12 Ebright Public Speaking (Danau Kota)',
+  '13 Ebright Public Speaking (Shah Alam)',
+  '14 Ebright Public Speaking (Bandar Tun Hussein Onn)',
+  '15 Ebright Public Speaking (Eco Grandeur)',
+  '16 Ebright Public Speaking (Bandar Seri Putra)',
+  '17 Ebright Public Speaking Academy (Bandar Rimbayu)',
+  '18 Ebright Public Speaking Academy (Taman Sri Gombak)',
+  '19 Ebright Public Speaking Academy (Kota Warisan)',
+  '20 Ebright Public Speaking Academy (TTDI Grove)',
 ] as const
 
 const STAGES = [
@@ -310,7 +313,8 @@ async function main() {
   //     TikTok / Wix into one table-shaped result.
   const leadsRes = await leadsClient.query<UnifiedLeadRow>(`
     SELECT source_table, source_id, lead_source, full_name, phone, email,
-           clean_branch, region, submitted_at, children_details, sibling_index
+           clean_branch, region, submitted_at, children_details, sibling_index,
+           campaign_name
       FROM public.master_leads_unified
      WHERE submitted_at IS NOT NULL
        AND (full_name IS NOT NULL OR phone IS NOT NULL OR email IS NOT NULL)

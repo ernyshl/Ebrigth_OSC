@@ -97,15 +97,12 @@ function BranchSwitcher({ user }: { user: SessionUser }) {
     if (typeof window !== 'undefined') localStorage.setItem(VIEW_MODE_KEY, m)
   }
 
-  // Sort: HR pinned to the top, then alphabetical. The "NN …" numeric prefix
-  // already makes the other 21 branches sort in the intended regional order.
-  const sorted = [...branches].sort((a, b) => {
-    const aHR = /^Ebright HR$/i.test(a.name)
-    const bHR = /^Ebright HR$/i.test(b.name)
-    if (aHR && !bHR) return -1
-    if (bHR && !aHR) return 1
-    return a.name.localeCompare(b.name, undefined, { numeric: true })
-  })
+  // Sort numerically by the "NN …" prefix. HR is excluded from dropdowns
+  // entirely (no pipeline, no leads), so we no longer pin it. Any branches
+  // without a numeric prefix sort alphabetically below the numbered set.
+  const sorted = [...branches]
+    .filter((b) => !/^Ebright HR$/i.test(b.name))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
 
   const filtered = query
     ? sorted.filter(

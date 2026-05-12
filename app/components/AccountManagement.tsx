@@ -14,8 +14,8 @@ interface UserAccount {
   email: string;
   role: string;
   branchName: string | null;
-  status: string;
   createdAt: string;
+  lastLoggedInAt: string | null;
 }
 
 type ModalMode = "create" | "edit" | "permission" | null;
@@ -34,6 +34,17 @@ function formatDate(iso: string) {
   });
 }
 
+function formatLastLogin(iso: string | null) {
+  if (!iso) return "Never";
+  return new Date(iso).toLocaleString("en-MY", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function RoleBadge({ role }: { role: string }) {
   const colours: Record<string, string> = {
     SUPER_ADMIN: "bg-purple-100 text-purple-800",
@@ -49,20 +60,6 @@ function RoleBadge({ role }: { role: string }) {
   return (
     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${cls}`}>
       {role.replace(/_/g, " ")}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  return status === "ACTIVE" ? (
-    <span className="flex items-center gap-1.5 text-xs font-semibold text-green-700">
-      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-      Active
-    </span>
-  ) : (
-    <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-400">
-      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
-      Inactive
     </span>
   );
 }
@@ -285,11 +282,9 @@ export default function AccountManagement() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("ALL");
-  const [filterStatus, setFilterStatus] = useState("ALL");
 
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [selectedUser, setSelectedUser] = useState<UserAccount | null>(null);
-  const [togglingId, setTogglingId] = useState<number | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -305,24 +300,6 @@ export default function AccountManagement() {
   }, []);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
-
-  async function handleToggleStatus(user: UserAccount) {
-    setTogglingId(user.id);
-    try {
-      const res = await fetch("/api/users", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: user.id, action: "toggle-status" }),
-      });
-      if (!res.ok) throw new Error("Failed");
-      const updated: UserAccount = await res.json();
-      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
-    } catch {
-      alert("Failed to update status.");
-    } finally {
-      setTogglingId(null);
-    }
-  }
 
   function openModal(mode: ModalMode, user: UserAccount | null = null) {
     setSelectedUser(user);
@@ -346,9 +323,14 @@ export default function AccountManagement() {
       (u.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
       u.email.toLowerCase().includes(search.toLowerCase());
     const matchRole = filterRole === "ALL" || u.role === filterRole;
-    const matchStatus = filterStatus === "ALL" || u.status === filterStatus;
-    return matchSearch && matchRole && matchStatus;
+    return matchSearch && matchRole;
   });
+
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const activeRecently = users.filter(
+    (u) => u.lastLoggedInAt && new Date(u.lastLoggedInAt).getTime() >= sevenDaysAgo,
+  ).length;
+  const neverLoggedIn = users.filter((u) => !u.lastLoggedInAt).length;
 
   return (
     <div className="flex min-h-screen bg-blue-50">
@@ -384,16 +366,12 @@ export default function AccountManagement() {
               <p className="text-sm text-gray-500 mt-1 font-medium">Total Accounts</p>
             </div>
             <div className="bg-white rounded-xl shadow-md p-6 flex flex-col items-center">
-              <p className="text-4xl font-bold text-green-600">
-                {users.filter((u) => u.status === "ACTIVE").length}
-              </p>
-              <p className="text-sm text-gray-500 mt-1 font-medium">Active</p>
+              <p className="text-4xl font-bold text-green-600">{activeRecently}</p>
+              <p className="text-sm text-gray-500 mt-1 font-medium">Logged in (last 7 days)</p>
             </div>
             <div className="bg-white rounded-xl shadow-md p-6 flex flex-col items-center">
-              <p className="text-4xl font-bold text-gray-400">
-                {users.filter((u) => u.status === "INACTIVE").length}
-              </p>
-              <p className="text-sm text-gray-500 mt-1 font-medium">Inactive</p>
+              <p className="text-4xl font-bold text-gray-400">{neverLoggedIn}</p>
+              <p className="text-sm text-gray-500 mt-1 font-medium">Never logged in</p>
             </div>
           </div>
 
@@ -416,15 +394,6 @@ export default function AccountManagement() {
                 <option key={r} value={r}>{r.replace(/_/g, " ")}</option>
               ))}
             </select>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="ALL">All Status</option>
-              <option value="ACTIVE">Active</option>
-              <option value="INACTIVE">Inactive</option>
-            </select>
             <span className="ml-auto text-sm text-gray-400">
               {filtered.length} of {users.length} accounts
             </span>
@@ -440,7 +409,7 @@ export default function AccountManagement() {
                     <th className="px-4 py-3 text-left text-sm font-semibold">Email</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold">Role</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold">Branch</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Status</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Last Logged In</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold">Date Joined</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold">Actions</th>
                   </tr>
@@ -460,7 +429,7 @@ export default function AccountManagement() {
                     </tr>
                   ) : (
                     filtered.map((u) => (
-                      <tr key={u.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${u.status === "INACTIVE" ? "opacity-60" : ""}`}>
+                      <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold uppercase">
@@ -474,7 +443,9 @@ export default function AccountManagement() {
                         <td className="px-4 py-3 text-sm text-gray-600">{u.email}</td>
                         <td className="px-4 py-3"><RoleBadge role={u.role} /></td>
                         <td className="px-4 py-3 text-sm text-gray-500">{u.branchName ?? "—"}</td>
-                        <td className="px-4 py-3"><StatusBadge status={u.status} /></td>
+                        <td className={`px-4 py-3 text-sm ${u.lastLoggedInAt ? "text-gray-500" : "text-gray-400 italic"}`}>
+                          {formatLastLogin(u.lastLoggedInAt)}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-500">{formatDate(u.createdAt)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
@@ -500,30 +471,6 @@ export default function AccountManagement() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                   d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
-                            </button>
-
-                            {/* Activate / Deactivate */}
-                            <button
-                              onClick={() => handleToggleStatus(u)}
-                              disabled={togglingId === u.id}
-                              title={u.status === "ACTIVE" ? "Deactivate" : "Activate"}
-                              className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${
-                                u.status === "ACTIVE"
-                                  ? "text-red-500 hover:bg-red-50"
-                                  : "text-green-500 hover:bg-green-50"
-                              }`}
-                            >
-                              {u.status === "ACTIVE" ? (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                                </svg>
-                              ) : (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                              )}
                             </button>
                           </div>
                         </td>

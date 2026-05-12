@@ -43,60 +43,77 @@ async function resolveTenantId(): Promise<string | null> {
   return first?.id ?? null
 }
 
-/** Branch short-code lookup — matches the Data Studio labels */
-// Keys are stored branch names (prefixed after rename migration).
+/**
+ * Branches whose lead activity is hidden from the elevated (super-admin)
+ * dashboard view. Currently: Ebright OD is the internal stress-test /
+ * training branch — its leads shouldn't pollute headline numbers, regional
+ * totals, or the "Main" pipeline.
+ *
+ * The OD branch manager still sees their own data normally: when a
+ * super-admin uses topbar "view as branch" to inspect OD, the request goes
+ * through the non-elevated code path which respects the explicit branchId
+ * and bypasses this exclusion.
+ */
+const ELEVATED_DASHBOARD_EXCLUDE = new Set<string>([
+  '00 Ebright OD',
+])
+
+/** Branch short-code lookup — matches the Data Studio labels.
+ *  Keys are stored branch names using the GHL numbering scheme. */
 const BRANCH_CODES: Record<string, string> = {
   '00 Ebright OD': 'OD',
-  '01 Ebright Public Speaking (Rimbayu)': 'RBY',
-  '02 Ebright Public Speaking (Klang)': 'KLG',
-  '03 Ebright Public Speaking (Shah Alam)': 'SHA',
-  '04 Ebright Public Speaking (Setia Alam)': 'SA',
-  '05 Ebright Public Speaking (Denai Alam)': 'DA',
-  '06 Ebright Public Speaking (Eco Grandeur)': 'EGR',
-  '07 Ebright Public Speaking (Subang Taipan)': 'ST',
-  '08 Ebright Public Speaking (Danau Kota)': 'DK',
-  '09 Ebright Public Speaking (Kota Damansara)': 'KD',
-  '10 Ebright Public Speaking (Ampang)': 'AMP',
-  '11 Ebright Public Speaking (Sri Petaling)': 'SP',
-  '12 Ebright Public Speaking (Bandar Tun Hussein Onn)': 'BTHO',
-  '13 Ebright Public Speaking (Kajang TTDI Grove)': 'KTG',
-  '14 Ebright Public Speaking (Taman Sri Gombak)': 'TSG',
-  '15 Ebright Public Speaking (Putrajaya)': 'PJY',
-  '16 Ebright Public Speaking (Kota Warisan)': 'KW',
-  '17 Ebright Public Speaking (Bandar Baru Bangi)': 'BBB',
-  '18 Ebright Public Speaking (Cyberjaya)': 'CJY',
-  '19 Ebright Public Speaking (Bandar Seri Putra)': 'BSP',
-  '20 Ebright Public Speaking (Dataran Puchong Utama)': 'DPU',
-  '21 Ebright Public Speaking (Online)': 'ONL',
+  '01 Ebright Public Speaking (Online)': 'ONL',
+  '02 Ebright Public Speaking (Subang Taipan)': 'ST',
+  '03 Ebright Public Speaking (Setia Alam)': 'SA',
+  '04 Ebright Public Speaking (Sri Petaling)': 'SP',
+  '05 Ebright Kids Public Speaking (Kota Damansara)': 'KD',
+  '06 Ebright Public Speaking (Putrajaya)': 'PJY',
+  '07 Ebright Kids Public Speaking (Ampang)': 'AMP',
+  '08 Ebright Public Speaking (Cyberjaya)': 'CJY',
+  '09 Ebright Public Speaking (Klang)': 'KLG',
+  '10 Ebright Kids Public Speaking (Denai Alam)': 'DA',
+  '11 Ebright Public Speaking (Bandar Baru Bangi)': 'BBB',
+  '12 Ebright Public Speaking (Danau Kota)': 'DK',
+  '13 Ebright Public Speaking (Shah Alam)': 'SHA',
+  '14 Ebright Public Speaking (Bandar Tun Hussein Onn)': 'BTHO',
+  '15 Ebright Public Speaking (Eco Grandeur)': 'EGR',
+  '16 Ebright Public Speaking (Bandar Seri Putra)': 'BSP',
+  '17 Ebright Public Speaking Academy (Bandar Rimbayu)': 'RBY',
+  '18 Ebright Public Speaking Academy (Taman Sri Gombak)': 'TSG',
+  '19 Ebright Public Speaking Academy (Kota Warisan)': 'KW',
+  '20 Ebright Public Speaking Academy (TTDI Grove)': 'TTG',
 }
 
+// Regions preserved geographically — same branches per region as before, just
+// using the new GHL names. Branch numbers in each region are no longer
+// contiguous (the GHL list reorders things), but the geographic groupings
+// match the existing Data Studio dashboard.
 const REGIONS: Record<'A' | 'B' | 'C', string[]> = {
   A: [
-    '01 Ebright Public Speaking (Rimbayu)',
-    '02 Ebright Public Speaking (Klang)',
-    '03 Ebright Public Speaking (Shah Alam)',
-    '04 Ebright Public Speaking (Setia Alam)',
-    '05 Ebright Public Speaking (Denai Alam)',
-    '06 Ebright Public Speaking (Eco Grandeur)',
-    '07 Ebright Public Speaking (Subang Taipan)',
+    '17 Ebright Public Speaking Academy (Bandar Rimbayu)',
+    '09 Ebright Public Speaking (Klang)',
+    '13 Ebright Public Speaking (Shah Alam)',
+    '03 Ebright Public Speaking (Setia Alam)',
+    '10 Ebright Kids Public Speaking (Denai Alam)',
+    '15 Ebright Public Speaking (Eco Grandeur)',
+    '02 Ebright Public Speaking (Subang Taipan)',
   ],
   B: [
-    '08 Ebright Public Speaking (Danau Kota)',
-    '09 Ebright Public Speaking (Kota Damansara)',
-    '10 Ebright Public Speaking (Ampang)',
-    '11 Ebright Public Speaking (Sri Petaling)',
-    '12 Ebright Public Speaking (Bandar Tun Hussein Onn)',
-    '13 Ebright Public Speaking (Kajang TTDI Grove)',
-    '14 Ebright Public Speaking (Taman Sri Gombak)',
+    '12 Ebright Public Speaking (Danau Kota)',
+    '05 Ebright Kids Public Speaking (Kota Damansara)',
+    '07 Ebright Kids Public Speaking (Ampang)',
+    '04 Ebright Public Speaking (Sri Petaling)',
+    '14 Ebright Public Speaking (Bandar Tun Hussein Onn)',
+    '20 Ebright Public Speaking Academy (TTDI Grove)',
+    '18 Ebright Public Speaking Academy (Taman Sri Gombak)',
   ],
   C: [
-    '15 Ebright Public Speaking (Putrajaya)',
-    '16 Ebright Public Speaking (Kota Warisan)',
-    '17 Ebright Public Speaking (Bandar Baru Bangi)',
-    '18 Ebright Public Speaking (Cyberjaya)',
-    '19 Ebright Public Speaking (Bandar Seri Putra)',
-    '20 Ebright Public Speaking (Dataran Puchong Utama)',
-    '21 Ebright Public Speaking (Online)',
+    '06 Ebright Public Speaking (Putrajaya)',
+    '19 Ebright Public Speaking Academy (Kota Warisan)',
+    '11 Ebright Public Speaking (Bandar Baru Bangi)',
+    '08 Ebright Public Speaking (Cyberjaya)',
+    '16 Ebright Public Speaking (Bandar Seri Putra)',
+    '01 Ebright Public Speaking (Online)',
   ],
 }
 
@@ -259,12 +276,16 @@ export async function GET(req: NextRequest) {
       categoryOrderByPipeline.set(s.pipelineId, bucket)
     }
 
-    // Fetch branches. Elevated users get the full canonical list; non-elevated
-    // users only get the branches they're explicitly linked to. Even if those
-    // branches aren't in BRANCH_CODES, they show up in `main` (their stats)
-    // but never in the regional cards.
+    // Fetch branches. Elevated users get the full canonical list MINUS
+    // the dashboard-excluded ones (OD etc.); non-elevated users only get
+    // the branches they're explicitly linked to. Even if those branches
+    // aren't in BRANCH_CODES, they show up in `main` (their stats) but
+    // never in the regional cards.
+    const elevatedBranchNames = Object.keys(BRANCH_CODES).filter(
+      (n) => !ELEVATED_DASHBOARD_EXCLUDE.has(n),
+    )
     const branchWhere = elevated
-      ? { tenantId, name: { in: Object.keys(BRANCH_CODES) } }
+      ? { tenantId, name: { in: elevatedBranchNames } }
       : { tenantId, id: { in: allowedBranchIds ?? [] } }
     const branches = await prisma.crm_branch.findMany({
       where: branchWhere,

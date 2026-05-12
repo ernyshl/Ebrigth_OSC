@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useMemo } from "react";
 import { Search, Check } from "lucide-react";
@@ -8,16 +8,22 @@ import { Modal } from "@fa/_components/shared/Modal";
 import { StatusPill } from "@fa/_components/fa/StatusPill";
 import { AgeCategory, Invitation, Session, isStudentEligible, hasBacklog } from "@fa/_types";
 
+export interface InvitePick {
+  studentId: string;
+  targetGrade: number;
+}
+
 export function InviteStudentsModal({
   open, onClose, session, quota, currentInvitations, allInvitationsForEvent, onInvite,
 }: {
   open: boolean;
   onClose: () => void;
   session: Session;
+  /** Marketing-set confirm target for this session/branch. Invite cap is 3× this. */
   quota: number;
   currentInvitations: Invitation[];
   allInvitationsForEvent: Invitation[];
-  onInvite: (studentIds: string[]) => void;
+  onInvite: (picks: InvitePick[]) => void;
 }) {
   const user = useCurrentUser();
   const allStudents = useFAStore(s => s.students);
@@ -27,15 +33,14 @@ export function InviteStudentsModal({
   );
 
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [picks, setPicks] = useState<Map<string, number>>(new Map());
   const [filterMode, setFilterMode] = useState<"eligible" | "all">("eligible");
   const [gradeFilter, setGradeFilter] = useState<number | "all">("all");
 
-  const remaining = quota - currentInvitations.length;
-  // Already invited anywhere in this event
+  const inviteCap = quota * 3;
+  const remaining = inviteCap - currentInvitations.length;
   const alreadyInEvent = new Set(allInvitationsForEvent.map(i => i.studentId));
 
-  // Filter & sort
   const visibleStudents = useMemo(() => {
     let list = students.filter(s => s.active);
     if (filterMode === "eligible") list = list.filter(s => isStudentEligible(s));
@@ -47,7 +52,6 @@ export function InviteStudentsModal({
              s.id.toLowerCase().includes(q)
       );
     }
-    // Sort: eligible first, then by name
     return list.sort((a, b) => {
       const ae = isStudentEligible(a) ? 0 : 1;
       const be = isStudentEligible(b) ? 0 : 1;
@@ -56,14 +60,15 @@ export function InviteStudentsModal({
     });
   }, [students, search, filterMode, gradeFilter]);
 
-  function toggleStudent(id: string) {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
+  function pickGrade(studentId: string, grade: number) {
+    setPicks(prev => {
+      const next = new Map(prev);
+      const current = next.get(studentId);
+      if (current === grade) {
+        next.delete(studentId);
       } else {
-        if (next.size >= remaining) return prev; // don't allow over-selection
-        next.add(id);
+        if (current === undefined && next.size >= remaining) return prev;
+        next.set(studentId, grade);
       }
       return next;
     });
@@ -74,7 +79,7 @@ export function InviteStudentsModal({
       open={open}
       onClose={onClose}
       title={`Invite students — Day ${session.dayNumber} Session ${session.sessionNumber}`}
-      description={`${session.startTime}–${session.endTime}${session.label ? ` · ${session.label}` : ""} · ${remaining} slot${remaining !== 1 ? "s" : ""} open`}
+      description={`${session.startTime}–${session.endTime}${session.label ? ` · ${session.label}` : ""} · ${remaining} of ${inviteCap} invite slots open (target: ${quota} confirmed)`}
       size="xl"
     >
       {/* Filters */}
@@ -121,7 +126,7 @@ export function InviteStudentsModal({
         </div>
 
         <div className="text-sm text-ink-500">
-          <strong className="text-ink-900">{selected.size}</strong> / {remaining} selected
+          <strong className="text-ink-900">{picks.size}</strong> / {remaining} selected
         </div>
       </div>
 
@@ -136,27 +141,28 @@ export function InviteStudentsModal({
             {visibleStudents.map(student => {
               const eligible = isStudentEligible(student);
               const backlog = hasBacklog(student);
-              const isChecked = selected.has(student.id);
+              const pickedGrade = picks.get(student.id);
+              const isSelected = pickedGrade !== undefined;
               const alreadyInvited = alreadyInEvent.has(student.id);
-              const disabled = alreadyInvited || (!isChecked && selected.size >= remaining);
+              const capReached = !isSelected && picks.size >= remaining;
               return (
-                <button
+                <div
                   key={student.id}
-                  type="button"
-                  onClick={() => !disabled && toggleStudent(student.id)}
-                  disabled={disabled}
-                  className={`w-full flex items-center gap-3 p-3 rounded-[10px] border text-left transition-all ${
-                    isChecked
+                  className={`w-full flex items-start gap-3 p-3 rounded-[10px] border text-left transition-all ${
+                    isSelected
                       ? "border-brand-600 bg-brand-50"
-                      : disabled
-                        ? "border-ivory-300 bg-ivory-100 opacity-60 cursor-not-allowed"
-                        : "border-ivory-300 bg-white hover:border-ink-300 hover:bg-ivory-100/60"
+                      : alreadyInvited
+                        ? "border-ivory-300 bg-ivory-100 opacity-60"
+                        : "border-ivory-300 bg-white"
                   }`}
                 >
-                  <div className={`w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all ${
-                    isChecked ? "border-brand-600 bg-brand-600" : "border-ink-200 bg-white"
-                  }`}>
-                    {isChecked && <Check className="w-3 h-3 text-white" />}
+                  <div
+                    className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all ${
+                      isSelected ? "border-brand-600 bg-brand-600" : "border-ink-200 bg-white"
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {isSelected && <Check className="w-3 h-3 text-white" />}
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -168,7 +174,7 @@ export function InviteStudentsModal({
                         <StatusPill tone="success" showDot={false}>Eligible</StatusPill>
                       )}
                       {!eligible && (
-                        <StatusPill tone="neutral" showDot={false}>Credit {student.credit}/11</StatusPill>
+                        <StatusPill tone="neutral" showDot={false}>No prior FA</StatusPill>
                       )}
                       {backlog && (
                         <StatusPill tone="warning" showDot={false}>Has backlog</StatusPill>
@@ -182,27 +188,49 @@ export function InviteStudentsModal({
                       <span>·</span>
                       <span className="font-mono">{student.parentPhone}</span>
                     </div>
-                    {/* Backlog detail */}
-                    {backlog && (
-                      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-                        {Array.from({ length: student.grade - 1 }, (_, i) => i + 1).map(g => {
-                          const done = student.faHistory[g] === true;
-                          return (
-                            <span
-                              key={g}
-                              className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                                done ? "bg-success-soft text-success" : "bg-danger-soft text-danger"
-                              }`}
-                              title={`Grade ${g}: ${done ? "completed" : "missed"}`}
-                            >
-                              G{g} {done ? "✓" : "✗"}
-                            </span>
-                          );
-                        })}
+
+                    {!alreadyInvited && (
+                      <div className="mt-2">
+                        <div className="text-[10px] uppercase tracking-wider text-ink-400 mb-1">
+                          Pick grade to appraise
+                        </div>
+                        {student.grade <= 1 ? (
+                          <div className="text-xs text-ink-400 italic">
+                            No prior grades to appraise.
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {Array.from({ length: student.grade - 1 }, (_, i) => i + 1).map(g => {
+                              const done = student.faHistory[g] === true;
+                              const isPicked = pickedGrade === g;
+                              const disabled = capReached && !isPicked;
+                              const baseCls = isPicked
+                                ? "bg-brand-600 text-white border-brand-600 ring-2 ring-brand-200"
+                                : done
+                                  ? "bg-success-soft text-success border-success/30 hover:border-success"
+                                  : "bg-danger-soft text-danger border-danger/30 hover:border-danger";
+                              const marker = isPicked ? "✓" : done ? "✓" : "✗";
+                              return (
+                                <button
+                                  key={g}
+                                  type="button"
+                                  onClick={() => pickGrade(student.id, g)}
+                                  disabled={disabled}
+                                  title={`Grade ${g}: ${done ? "completed" : "missed"}`}
+                                  className={`text-[11px] font-mono px-2 py-1 rounded border transition-colors ${baseCls} ${
+                                    disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                                  }`}
+                                >
+                                  G{g} {marker}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -212,16 +240,23 @@ export function InviteStudentsModal({
       <div className="flex items-center justify-between pt-4 mt-4 border-t border-ivory-300">
         <div className="text-xs text-ink-400">
           Showing <strong className="text-ink-600">{visibleStudents.length}</strong> student{visibleStudents.length !== 1 ? "s" : ""}
-          {filterMode === "eligible" && <> with credit 10–11 (eligible)</>}
+          {filterMode === "eligible" && <> with at least one prior grade (eligible)</>}
         </div>
         <div className="flex gap-2">
           <button onClick={onClose} className="fa-btn-secondary">Cancel</button>
           <button
-            onClick={() => onInvite(Array.from(selected))}
-            disabled={selected.size === 0}
+            onClick={() =>
+              onInvite(
+                Array.from(picks.entries()).map(([studentId, targetGrade]) => ({
+                  studentId,
+                  targetGrade,
+                }))
+              )
+            }
+            disabled={picks.size === 0}
             className="fa-btn-primary"
           >
-            Invite {selected.size > 0 && `${selected.size} student${selected.size !== 1 ? "s" : ""}`}
+            Invite {picks.size > 0 && `${picks.size} student${picks.size !== 1 ? "s" : ""}`}
           </button>
         </div>
       </div>

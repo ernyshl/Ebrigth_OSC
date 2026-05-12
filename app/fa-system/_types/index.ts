@@ -116,9 +116,10 @@ export interface Student {
   active: boolean;
 }
 
-/** Eligibility rule: a student is eligible for FA when they've earned 10 or 11 credits in their current grade. */
+/** Eligibility rule: a student is eligible for FA when they have at least one
+ *  prior grade slot to appraise (grade >= 2 — G1 students have no FA history yet). */
 export function isStudentEligible(student: Student): boolean {
-  return student.active && (student.credit === 10 || student.credit === 11);
+  return student.active && student.grade >= 2;
 }
 
 /** Check if student has a backlog — any completed grade below current where FA was not done. */
@@ -145,6 +146,9 @@ export interface Invitation {
   sessionId: string;
   studentId: string;
   branch: BranchCode;
+  /** Grade the student is being appraised for in this invitation.
+   *  May differ from student.grade when clearing backlog. */
+  targetGrade: number;
   status: InvitationStatus;
   invitedBy: string;            // User id (BM)
   invitedAt: string;
