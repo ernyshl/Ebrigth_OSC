@@ -3,31 +3,33 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { toast } from 'sonner'
 
-// Public trial form: 00 Ebright OD + 20 GHL-numbered branches.
-// HR is excluded (no pipeline). Dataran Puchong Utama is excluded (not in
-// GHL); historical contacts pointing at it stay routable via UUID.
+// Public trial form: 00 Ebright (OD) + 23 numbered branches.
+// HR is excluded (no pipeline).
 const BRANCHES = [
-  '00 Ebright OD',
-  '01 Ebright Public Speaking (Online)',
-  '02 Ebright Public Speaking (Subang Taipan)',
-  '03 Ebright Public Speaking (Setia Alam)',
-  '04 Ebright Public Speaking (Sri Petaling)',
-  '05 Ebright Kids Public Speaking (Kota Damansara)',
-  '06 Ebright Public Speaking (Putrajaya)',
-  '07 Ebright Kids Public Speaking (Ampang)',
-  '08 Ebright Public Speaking (Cyberjaya)',
-  '09 Ebright Public Speaking (Klang)',
-  '10 Ebright Kids Public Speaking (Denai Alam)',
-  '11 Ebright Public Speaking (Bandar Baru Bangi)',
-  '12 Ebright Public Speaking (Danau Kota)',
-  '13 Ebright Public Speaking (Shah Alam)',
-  '14 Ebright Public Speaking (Bandar Tun Hussein Onn)',
-  '15 Ebright Public Speaking (Eco Grandeur)',
-  '16 Ebright Public Speaking (Bandar Seri Putra)',
-  '17 Ebright Public Speaking Academy (Bandar Rimbayu)',
-  '18 Ebright Public Speaking Academy (Taman Sri Gombak)',
-  '19 Ebright Public Speaking Academy (Kota Warisan)',
-  '20 Ebright Public Speaking Academy (TTDI Grove)',
+  '00 Ebright (OD)',
+  '01 Ebright (Online)',
+  '02 Ebright (Subang Taipan)',
+  '03 Ebright (Setia Alam)',
+  '04 Ebright (Sri Petaling)',
+  '05 Ebright (Kota Damansara)',
+  '06 Ebright (Putrajaya)',
+  '07 Ebright (Ampang)',
+  '08 Ebright (Cyberjaya)',
+  '09 Ebright (Klang)',
+  '10 Ebright (Denai Alam)',
+  '11 Ebright (Bandar Baru Bangi)',
+  '12 Ebright (Danau Kota)',
+  '13 Ebright (Shah Alam)',
+  '14 Ebright (Bandar Tun Hussein Onn)',
+  '15 Ebright (Eco Grandeur)',
+  '16 Ebright (Bandar Seri Putra)',
+  '17 Ebright (Bandar Rimbayu)',
+  '18 Ebright (Taman Sri Gombak)',
+  '19 Ebright (Kota Warisan)',
+  '20 Ebright (Kajang TTDI Grove)',
+  '21 Ebright (Dataran Puchong Utama)',
+  '22 Ebright (Puncak Jalil)',
+  '23 Ebright (Tropicana Sungai Buloh)',
 ]
 
 interface Child {

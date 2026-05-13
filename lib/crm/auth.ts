@@ -211,8 +211,8 @@ async function getOrCreateCrmUserForEmail(email: string, name?: string) {
       const hrfsBranch = hrfs?.branchName?.trim()
 
       // 2. Find a CRM branch that matches HRFS's branchName (case-insensitive
-      //    substring — CRM names are like "01 Ebright Public Speaking
-      //    (Rimbayu)" while HRFS often stores just "Rimbayu").
+      //    substring — CRM names are like "17 Ebright (Bandar Rimbayu)"
+      //    while HRFS often stores just "Rimbayu").
       let branch: { id: string; tenantId: string } | null = null
       if (hrfsBranch) {
         branch = await prisma.crm_branch.findFirst({

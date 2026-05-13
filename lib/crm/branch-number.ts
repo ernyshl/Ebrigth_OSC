@@ -1,7 +1,7 @@
 /**
  * Extract the 2-digit branch_number prefix from a CRM branch name.
  *
- * The CRM stores branches as `"01 Ebright Public Speaking (Rimbayu)"`. The
+ * The CRM stores branches as `"01 Ebright (Rimbayu)"`. The
  * ticketing module's `tkt_branch.branch_number` is just `"01"`. This helper
  * lets the topbar's branch switcher (which holds CRM branch info) drive
  * ticket-side filters.
