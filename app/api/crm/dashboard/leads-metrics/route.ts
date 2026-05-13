@@ -45,21 +45,17 @@ async function resolveTenantId(): Promise<string | null> {
 
 /**
  * Branches whose lead activity is hidden from the elevated (super-admin)
- * dashboard view. Two categories:
- *   - Internal / admin branches whose leads aren't real sales pipeline
- *     (Ebright OD is the stress-test / training branch).
- *   - Upcoming branches that exist in CRM but haven't opened yet
- *     (Dataran Puchong Utama, Johor). Their leads are recorded but excluded
- *     from regional totals until they're operationally active.
+ * dashboard view. Currently only Ebright OD (internal stress-test /
+ * training branch) — its leads shouldn't pollute headline numbers,
+ * regional totals, or the "Main" pipeline.
  *
- * The branch manager for any of these still sees their own data normally:
- * when a super-admin uses topbar "view as branch" to inspect them, the
- * request goes through the non-elevated code path which respects the
- * explicit branchId and bypasses this exclusion.
+ * The OD branch manager still sees their own data normally: when a
+ * super-admin uses topbar "view as branch" to inspect OD, the request
+ * goes through the non-elevated code path which respects the explicit
+ * branchId and bypasses this exclusion.
  */
 const ELEVATED_DASHBOARD_EXCLUDE = new Set<string>([
   '00 Ebright OD',
-  '20 Ebright Public Speaking (Dataran Puchong Utama)',
 ])
 
 /** Branch short-code lookup — matches the Data Studio labels.
@@ -86,6 +82,9 @@ const BRANCH_CODES: Record<string, string> = {
   '18 Ebright Public Speaking Academy (Taman Sri Gombak)': 'TSG',
   '19 Ebright Public Speaking Academy (Kota Warisan)': 'KW',
   '20 Ebright Public Speaking Academy (TTDI Grove, Kajang)': 'KTG',
+  '21 Ebright Public Speaking (Dataran Puchong Utama)': 'DPU',
+  '22 Ebright Public Speaking (Puncak Jalil)': 'PJL',
+  '23 Ebright Public Speaking (Tropicana Sungai Buloh)': 'TSB',
 }
 
 // Regions preserved geographically — same branches per region as before, just
@@ -101,6 +100,7 @@ const REGIONS: Record<'A' | 'B' | 'C', string[]> = {
     '10 Ebright Kids Public Speaking (Denai Alam)',
     '15 Ebright Public Speaking (Eco Grandeur)',
     '02 Ebright Public Speaking (Subang Taipan)',
+    '23 Ebright Public Speaking (Tropicana Sungai Buloh)',
   ],
   B: [
     '12 Ebright Public Speaking (Danau Kota)',
@@ -110,6 +110,7 @@ const REGIONS: Record<'A' | 'B' | 'C', string[]> = {
     '14 Ebright Public Speaking (Bandar Tun Hussein Onn)',
     '20 Ebright Public Speaking Academy (TTDI Grove, Kajang)',
     '18 Ebright Public Speaking Academy (Taman Sri Gombak)',
+    '21 Ebright Public Speaking (Dataran Puchong Utama)',
   ],
   C: [
     '06 Ebright Public Speaking (Putrajaya)',
@@ -118,6 +119,7 @@ const REGIONS: Record<'A' | 'B' | 'C', string[]> = {
     '08 Ebright Public Speaking (Cyberjaya)',
     '16 Ebright Public Speaking (Bandar Seri Putra)',
     '01 Ebright Public Speaking (Online)',
+    '22 Ebright Public Speaking (Puncak Jalil)',
   ],
 }
 
