@@ -45,47 +45,48 @@ async function resolveTenantId(): Promise<string | null> {
 
 /**
  * Branches whose lead activity is hidden from the elevated (super-admin)
- * dashboard view. Two categories:
- *   - Internal / admin branches whose leads aren't real sales pipeline
- *     (Ebright OD is the stress-test / training branch).
- *   - Upcoming branches that exist in CRM but haven't opened yet
- *     (Dataran Puchong Utama, Johor). Their leads are recorded but excluded
- *     from regional totals until they're operationally active.
+ * dashboard view. Currently only Ebright OD (internal stress-test /
+ * training branch) — its leads shouldn't pollute headline numbers,
+ * regional totals, or the "Main" pipeline.
  *
- * The branch manager for any of these still sees their own data normally:
- * when a super-admin uses topbar "view as branch" to inspect them, the
- * request goes through the non-elevated code path which respects the
- * explicit branchId and bypasses this exclusion.
+ * The OD branch manager still sees their own data normally: when a
+ * super-admin uses topbar "view as branch" to inspect OD, the request
+ * goes through the non-elevated code path which respects the explicit
+ * branchId and bypasses this exclusion.
  */
 const ELEVATED_DASHBOARD_EXCLUDE = new Set<string>([
-  '00 Ebright OD',
-  '20 Ebright Public Speaking (Dataran Puchong Utama)',
+  '00 Ebright (OD)',
 ])
 
 /** Branch short-code lookup — matches the Data Studio labels.
- *  Keys are stored branch names using the GHL numbering scheme. */
+ *  Keys are stored branch names using the standardized "NN Ebright (location)"
+ *  scheme — branches were renamed away from the old "Public Speaking /
+ *  Kids / Academy" suffix variants. */
 const BRANCH_CODES: Record<string, string> = {
-  '00 Ebright OD': 'OD',
-  '01 Ebright Public Speaking (Online)': 'ONL',
-  '02 Ebright Public Speaking (Subang Taipan)': 'ST',
-  '03 Ebright Public Speaking (Setia Alam)': 'SA',
-  '04 Ebright Public Speaking (Sri Petaling)': 'SP',
-  '05 Ebright Kids Public Speaking (Kota Damansara)': 'KD',
-  '06 Ebright Public Speaking (Putrajaya)': 'PJY',
-  '07 Ebright Kids Public Speaking (Ampang)': 'AMP',
-  '08 Ebright Public Speaking (Cyberjaya)': 'CJY',
-  '09 Ebright Public Speaking (Klang)': 'KLG',
-  '10 Ebright Kids Public Speaking (Denai Alam)': 'DA',
-  '11 Ebright Public Speaking (Bandar Baru Bangi)': 'BBB',
-  '12 Ebright Public Speaking (Danau Kota)': 'DK',
-  '13 Ebright Public Speaking (Shah Alam)': 'SHA',
-  '14 Ebright Public Speaking (Bandar Tun Hussein Onn)': 'BTHO',
-  '15 Ebright Public Speaking (Eco Grandeur)': 'EGR',
-  '16 Ebright Public Speaking (Bandar Seri Putra)': 'BSP',
-  '17 Ebright Public Speaking Academy (Bandar Rimbayu)': 'RBY',
-  '18 Ebright Public Speaking Academy (Taman Sri Gombak)': 'TSG',
-  '19 Ebright Public Speaking Academy (Kota Warisan)': 'KW',
-  '20 Ebright Public Speaking Academy (TTDI Grove, Kajang)': 'KTG',
+  '00 Ebright (OD)':                       'OD',
+  '01 Ebright (Online)':                   'ONL',
+  '02 Ebright (Subang Taipan)':            'ST',
+  '03 Ebright (Setia Alam)':               'SA',
+  '04 Ebright (Sri Petaling)':             'SP',
+  '05 Ebright (Kota Damansara)':           'KD',
+  '06 Ebright (Putrajaya)':                'PJY',
+  '07 Ebright (Ampang)':                   'AMP',
+  '08 Ebright (Cyberjaya)':                'CJY',
+  '09 Ebright (Klang)':                    'KLG',
+  '10 Ebright (Denai Alam)':               'DA',
+  '11 Ebright (Bandar Baru Bangi)':        'BBB',
+  '12 Ebright (Danau Kota)':               'DK',
+  '13 Ebright (Shah Alam)':                'SHA',
+  '14 Ebright (Bandar Tun Hussein Onn)':   'BTHO',
+  '15 Ebright (Eco Grandeur)':             'EGR',
+  '16 Ebright (Bandar Seri Putra)':        'BSP',
+  '17 Ebright (Bandar Rimbayu)':           'RBY',
+  '18 Ebright (Taman Sri Gombak)':         'TSG',
+  '19 Ebright (Kota Warisan)':             'KW',
+  '20 Ebright (Kajang TTDI Grove)':        'KTG',
+  '21 Ebright (Dataran Puchong Utama)':    'DPU',
+  '22 Ebright (Puncak Jalil)':             'PJL',
+  '23 Ebright (Tropicana Sungai Buloh)':   'TSB',
 }
 
 // Regions preserved geographically — same branches per region as before, just
@@ -94,30 +95,33 @@ const BRANCH_CODES: Record<string, string> = {
 // match the existing Data Studio dashboard.
 const REGIONS: Record<'A' | 'B' | 'C', string[]> = {
   A: [
-    '17 Ebright Public Speaking Academy (Bandar Rimbayu)',
-    '09 Ebright Public Speaking (Klang)',
-    '13 Ebright Public Speaking (Shah Alam)',
-    '03 Ebright Public Speaking (Setia Alam)',
-    '10 Ebright Kids Public Speaking (Denai Alam)',
-    '15 Ebright Public Speaking (Eco Grandeur)',
-    '02 Ebright Public Speaking (Subang Taipan)',
+    '17 Ebright (Bandar Rimbayu)',
+    '09 Ebright (Klang)',
+    '13 Ebright (Shah Alam)',
+    '03 Ebright (Setia Alam)',
+    '10 Ebright (Denai Alam)',
+    '15 Ebright (Eco Grandeur)',
+    '02 Ebright (Subang Taipan)',
+    '23 Ebright (Tropicana Sungai Buloh)',
   ],
   B: [
-    '12 Ebright Public Speaking (Danau Kota)',
-    '05 Ebright Kids Public Speaking (Kota Damansara)',
-    '07 Ebright Kids Public Speaking (Ampang)',
-    '04 Ebright Public Speaking (Sri Petaling)',
-    '14 Ebright Public Speaking (Bandar Tun Hussein Onn)',
-    '20 Ebright Public Speaking Academy (TTDI Grove, Kajang)',
-    '18 Ebright Public Speaking Academy (Taman Sri Gombak)',
+    '12 Ebright (Danau Kota)',
+    '05 Ebright (Kota Damansara)',
+    '07 Ebright (Ampang)',
+    '04 Ebright (Sri Petaling)',
+    '14 Ebright (Bandar Tun Hussein Onn)',
+    '20 Ebright (Kajang TTDI Grove)',
+    '18 Ebright (Taman Sri Gombak)',
+    '21 Ebright (Dataran Puchong Utama)',
   ],
   C: [
-    '06 Ebright Public Speaking (Putrajaya)',
-    '19 Ebright Public Speaking Academy (Kota Warisan)',
-    '11 Ebright Public Speaking (Bandar Baru Bangi)',
-    '08 Ebright Public Speaking (Cyberjaya)',
-    '16 Ebright Public Speaking (Bandar Seri Putra)',
-    '01 Ebright Public Speaking (Online)',
+    '06 Ebright (Putrajaya)',
+    '19 Ebright (Kota Warisan)',
+    '11 Ebright (Bandar Baru Bangi)',
+    '08 Ebright (Cyberjaya)',
+    '16 Ebright (Bandar Seri Putra)',
+    '01 Ebright (Online)',
+    '22 Ebright (Puncak Jalil)',
   ],
 }
 
