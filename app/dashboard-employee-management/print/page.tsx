@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   parsePrintParams,
   buildPrintApiUrl,
@@ -31,16 +32,15 @@ function FilterSummary({ params }: { params: PrintParams }) {
   );
 }
 
-export default function PrintEmployeeListPage() {
+function PrintEmployeeListContent() {
   const [employees, setEmployees] = useState<PrintEmployee[]>([]);
   const [state, setState] = useState<LoadState>("loading");
 
-  const params: PrintParams = useMemo(() => {
-    if (typeof window === "undefined") {
-      return { all: false, branch: "", role: "", status: "", search: "" };
-    }
-    return parsePrintParams(new URLSearchParams(window.location.search));
-  }, []);
+  const rawSearchParams = useSearchParams();
+  const params: PrintParams = useMemo(
+    () => parsePrintParams(new URLSearchParams(rawSearchParams?.toString() ?? "")),
+    [rawSearchParams]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -48,9 +48,10 @@ export default function PrintEmployeeListPage() {
       try {
         const res = await fetch(buildPrintApiUrl(params));
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as PrintEmployee[];
+        const data: unknown = await res.json();
+        if (!Array.isArray(data)) throw new Error("unexpected response shape");
         if (cancelled) return;
-        const filtered = filterEmployeesForPrint(data, params.status);
+        const filtered = filterEmployeesForPrint(data as PrintEmployee[], params.status);
         setEmployees(filtered);
         setState(filtered.length === 0 ? "empty" : "ready");
       } catch (err) {
@@ -171,5 +172,13 @@ export default function PrintEmployeeListPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function PrintEmployeeListPage() {
+  return (
+    <Suspense fallback={<p className="p-8 text-gray-600">Loading…</p>}>
+      <PrintEmployeeListContent />
+    </Suspense>
   );
 }
