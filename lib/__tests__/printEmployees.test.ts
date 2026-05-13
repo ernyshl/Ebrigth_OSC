@@ -78,8 +78,9 @@ describe('filterEmployeesForPrint', () => {
     expect(filterEmployeesForPrint(sample, '').map((e) => e.id)).toEqual(['1', '2', '3', '4']);
   });
 
-  it('filters by Emp_Status when status is Active or Inactive', () => {
-    expect(filterEmployeesForPrint(sample, 'Active').map((e) => e.id)).toEqual(['1', '4']);
+  it('filters by Emp_Status (mirrors EmployeeTable: does not exclude ARCHIVED rows)', () => {
+    // Matches EmployeeTable.tsx:159-163 — Active/Inactive matches Emp_Status only.
+    expect(filterEmployeesForPrint(sample, 'Active').map((e) => e.id)).toEqual(['1', '3', '4']);
     expect(filterEmployeesForPrint(sample, 'Inactive').map((e) => e.id)).toEqual(['2']);
   });
 

@@ -48,7 +48,7 @@ export function buildPrintApiUrl(p: PrintParams): string {
 export function filterEmployeesForPrint(rows: PrintEmployee[], status: string): PrintEmployee[] {
   if (!status) return rows;
   if (status === 'Archived') return rows.filter((e) => e.accessStatus === 'ARCHIVED');
-  return rows.filter((e) => (e.Emp_Status ?? '') === status && e.accessStatus !== 'ARCHIVED');
+  return rows.filter((e) => (e.Emp_Status ?? '') === status);
 }
 
 const BRANCH_ORDER: Record<string, number> = Object.fromEntries(
