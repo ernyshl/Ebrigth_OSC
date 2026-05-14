@@ -38,12 +38,18 @@ function normalizeStageCode(code: string): string {
 }
 
 const ALLOWED_LEAD_TRANSITIONS: Record<string, string[]> = {
-  NL: ['FU1'],
-  FU1: ['FU2', 'CT', 'DND'],
-  FU2: ['FU3', 'CT', 'DND'],
-  FU3: ['RSD', 'URW1', 'CT', 'DND'],
+  // NL: branch managers may pick any of the three follow-ups (no enforced
+  // FU1→FU2→FU3 ordering). Forward-only — no NL ← FU.
+  NL: ['FU1', 'FU2', 'FU3'],
+  // FU1/FU2/FU3: can advance to a later follow-up, jump to CT, or drop the
+  // lead directly to Cold Lead without going through UR_W1/UR_W2/FU3M first.
+  FU1: ['FU2', 'FU3', 'CT', 'CL', 'DND'],
+  FU2: ['FU3', 'CT', 'CL', 'DND'],
+  FU3: ['RSD', 'URW1', 'CT', 'CL', 'DND'],
   RSD: ['CT', 'DND'],
-  CT: ['SU', 'CNS'],
+  // CT → RSD is the ONLY allowed backward move in the entire ruleset, so a
+  // trial that needs rescheduling doesn't require an admin override.
+  CT: ['SU', 'CNS', 'RSD'],
   CNS: ['URW1'],
   URW1: ['URW2', 'CL', 'DND'],
   URW2: ['FU3M', 'CL', 'DND'],
@@ -53,7 +59,7 @@ const ALLOWED_LEAD_TRANSITIONS: Record<string, string[]> = {
   ENR: [],
   CL: [],
   DND: [],
-  // Self-Generated is an entry state — allow hand-off into early/confirmed stages.
+  // Buffer (OD use only) — entry state, allow hand-off into early/confirmed stages.
   SG: ['NL', 'FU1', 'FU2', 'FU3', 'CT'],
 }
 
@@ -702,7 +708,7 @@ export function KanbanBoard({
   const [moveNote, setMoveNote] = useState('')
   const [trialDate, setTrialDate] = useState<string>('')
   const [trialTimeSlot, setTrialTimeSlot] = useState<string>('')
-  const [enrollmentMonths, setEnrollmentMonths] = useState<6 | 9 | 12 | undefined>(undefined)
+  const [enrollmentMonths, setEnrollmentMonths] = useState<3 | 6 | 9 | 12 | undefined>(undefined)
   const [rescheduleDate, setRescheduleDate] = useState<string>('')
   // Local pending flag scoped to the modal confirm action. Using
   // moveMutation.isPending directly would leak state from any other in-flight

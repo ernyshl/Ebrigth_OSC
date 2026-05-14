@@ -220,6 +220,14 @@ export async function POST(req: NextRequest) {
 
     const { platformSlug, branchId, subType, fields } = parsed.data
 
+    // Branch-scope enforcement for non-admins. The dropdown in TicketForm
+    // already restricts visible branches via GET /api/crm/tkt-branches, but
+    // a tampered submission could send any UUID — so check here too. Admin
+    // roles can target any branch in their tenant.
+    if (ctx.role === 'user' && !ctx.branchIds.includes(branchId)) {
+      return err('You do not have access to this branch', 403)
+    }
+
     // Load platform by slug
     const platform = await prisma.tkt_platform.findFirst({
       where: { tenant_id: ctx.tenantId, slug: platformSlug },
