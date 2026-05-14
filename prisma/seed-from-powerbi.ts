@@ -89,7 +89,7 @@ const STAGES = [
   { name: 'Follow-Up 3 Months',    shortCode: 'FU3M',  color: 'slate'   },
   { name: 'Cold Lead',             shortCode: 'CL',    color: 'slate'   },
   { name: 'Do Not Disturb',        shortCode: 'DND',   color: 'red'     },
-  { name: 'Self-Generated',        shortCode: 'SG',    color: 'indigo'  },
+  { name: 'Buffer (OD use only)',  shortCode: 'SG',    color: 'indigo'  },
 ]
 
 const LEAD_SOURCES = [

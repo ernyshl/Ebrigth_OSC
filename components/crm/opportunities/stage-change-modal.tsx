@@ -14,11 +14,11 @@ interface StageChangeModalProps {
   onNoteChange: (note: string) => void
   trialDate?: string
   trialTimeSlot?: string
-  enrollmentMonths?: 6 | 9 | 12
+  enrollmentMonths?: 3 | 6 | 9 | 12
   rescheduleDate?: string
   onTrialDateChange?: (v: string) => void
   onTrialTimeSlotChange?: (v: string) => void
-  onEnrollmentMonthsChange?: (v: 6 | 9 | 12) => void
+  onEnrollmentMonthsChange?: (v: 3 | 6 | 9 | 12) => void
   onRescheduleDateChange?: (v: string) => void
   onConfirm: () => void
   onCancel: () => void
@@ -61,11 +61,22 @@ function isoOf(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-const PACKAGE_OPTIONS: Array<{ months: 6 | 9 | 12; label: string; subtitle: string }> = [
-  { months: 6,  label: '6 Months',  subtitle: 'Standard'  },
-  { months: 9,  label: '9 Months',  subtitle: 'Extended'  },
-  { months: 12, label: '12 Months', subtitle: 'Full year' },
+const PACKAGE_OPTIONS: Array<{
+  months: 3 | 6 | 9 | 12
+  label: string
+  subtitle: string
+  /** Total price in MYR (Ringgit). Displayed to the BM as confirmation. */
+  priceMyr: number
+}> = [
+  { months: 3,  label: '3 Months',  subtitle: 'Starter',   priceMyr:  980 },
+  { months: 6,  label: '6 Months',  subtitle: 'Standard',  priceMyr: 1960 },
+  { months: 9,  label: '9 Months',  subtitle: 'Extended',  priceMyr: 2940 },
+  { months: 12, label: '12 Months', subtitle: 'Full year', priceMyr: 3920 },
 ]
+
+function formatRm(n: number): string {
+  return `RM ${n.toLocaleString('en-MY')}`
+}
 
 export function StageChangeModal({
   branchId,
@@ -227,10 +238,12 @@ export function StageChangeModal({
                     No slots — classes don&apos;t run on this day.
                   </p>
                 ) : (
+                  <>
                   <div className="grid grid-cols-3 gap-1.5">
                     {availableSlots.map((slot) => {
                       const selected = trialTimeSlot === slot
                       const count = slotCounts[slotToHHMM(slot)] ?? 0
+                      const remaining = Math.max(0, TRIAL_CAPACITY - count)
                       const full = count >= TRIAL_CAPACITY
                       return (
                         <button
@@ -240,8 +253,8 @@ export function StageChangeModal({
                           disabled={full}
                           title={
                             full
-                              ? `Fully booked (${count}/${TRIAL_CAPACITY})`
-                              : `${count}/${TRIAL_CAPACITY} booked`
+                              ? `Fully booked (${count}/${TRIAL_CAPACITY} students)`
+                              : `${remaining} seat${remaining === 1 ? '' : 's'} left (${count}/${TRIAL_CAPACITY} booked)`
                           }
                           className={cn(
                             'flex flex-col items-center gap-0.5 rounded-md border px-2 py-1.5 text-xs font-semibold transition',
@@ -263,19 +276,25 @@ export function StageChangeModal({
                                 ? 'text-indigo-100'
                                 : full
                                   ? 'text-red-500'
-                                  : 'text-slate-400 dark:text-slate-500',
+                                  : remaining <= 3
+                                    ? 'text-amber-600 dark:text-amber-400'
+                                    : 'text-slate-400 dark:text-slate-500',
                             )}
                           >
                             {loadingCounts
                               ? '…'
                               : full
-                                ? `Full ${count}/${TRIAL_CAPACITY}`
-                                : `${count}/${TRIAL_CAPACITY}`}
+                                ? 'Full'
+                                : `${remaining} seat${remaining === 1 ? '' : 's'} left`}
                           </span>
                         </button>
                       )
                     })}
                   </div>
+                  <p className="text-[11px] italic text-slate-500">
+                    Each trial slot fits up to {TRIAL_CAPACITY} students.
+                  </p>
+                  </>
                 )}
               </div>
             </div>
@@ -324,6 +343,14 @@ export function StageChangeModal({
                       <div className="text-base font-bold">{opt.label}</div>
                       <div className={cn('text-[11px]', selected ? 'text-emerald-700 dark:text-emerald-200' : 'text-slate-500 dark:text-slate-400')}>
                         {opt.subtitle}
+                      </div>
+                      <div
+                        className={cn(
+                          'mt-1 text-[12px] font-semibold tabular-nums',
+                          selected ? 'text-emerald-800 dark:text-emerald-100' : 'text-emerald-700 dark:text-emerald-300',
+                        )}
+                      >
+                        {formatRm(opt.priceMyr)}
                       </div>
                     </button>
                   )

@@ -25,6 +25,8 @@ interface BranchMetrics {
   CT: number
   SU: number
   ENR: number
+  /** Snapshot count of leads currently parked in the Buffer (OD use only) stage. */
+  BUF: number
   conversionRate: number
   confirmedRate: number
   showUpRate: number
@@ -37,6 +39,7 @@ interface MonthlyBucket {
   CT: number
   SU: number
   ENR: number
+  BUF: number
 }
 
 interface MetricsResponse {
@@ -217,11 +220,14 @@ function MetricsBlock({
         </div>
       </div>
 
-      <div className={cn('grid gap-3', compact ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4')}>
+      <div className={cn('grid gap-3', compact ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-5')}>
         <Stat label="NL" value={metrics.NL} bold />
         <Stat label="CT" value={metrics.CT} bold />
         <Stat label="SU" value={metrics.SU} bold />
         <Stat label="ENR" value={metrics.ENR} bold />
+        {!compact && (
+          <Stat label="Buffer" value={metrics.BUF} bold hint="OD use only" />
+        )}
       </div>
 
       <div className={cn('mt-3 grid gap-3', compact ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4')}>

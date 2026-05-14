@@ -125,12 +125,14 @@ const REGIONS: Record<'A' | 'B' | 'C', string[]> = {
   ],
 }
 
-// Stage-name detection
+// Stage-name detection. BUF matches both legacy "Self-Generated" and the new
+// "Buffer (OD use only)" label so the snapshot count survives the rename.
 const STAGE_PATTERN = {
   NL:  /^new lead$/i,
   CT:  /^confirmed for trial$/i,
   SU:  /^show[- ]up$/i,
   ENR: /^enrolled$/i,
+  BUF: /^(self[- ]generated|buffer)/i,
 }
 
 interface BranchMetrics {
@@ -141,6 +143,8 @@ interface BranchMetrics {
   CT: number
   SU: number
   ENR: number
+  /** Snapshot — leads currently parked in the Buffer (OD use only) stage. */
+  BUF: number
   conversionRate: number   // ENR / NL
   confirmedRate: number    // CT / NL
   showUpRate: number       // SU / CT
@@ -149,7 +153,7 @@ interface BranchMetrics {
 
 function zero(): Omit<BranchMetrics, 'branchId' | 'branchName' | 'code'> {
   return {
-    NL: 0, CT: 0, SU: 0, ENR: 0,
+    NL: 0, CT: 0, SU: 0, ENR: 0, BUF: 0,
     conversionRate: 0, confirmedRate: 0, showUpRate: 0, enrolmentRate: 0,
   }
 }
@@ -252,7 +256,7 @@ export async function GET(req: NextRequest) {
     // Grab all stages — need id → category AND per-pipeline order of each category
     const stages = await prisma.crm_stage.findMany({
       where: { tenantId },
-      select: { id: true, name: true, order: true, pipelineId: true },
+      select: { id: true, name: true, shortCode: true, order: true, pipelineId: true },
     })
 
     // Map stage.id → { pipelineId, order, category }
@@ -264,17 +268,35 @@ export async function GET(req: NextRequest) {
     const stageInfo = new Map<string, StageInfo>()
     for (const s of stages) {
       let cat: keyof typeof STAGE_PATTERN | undefined
-      for (const [k, re] of Object.entries(STAGE_PATTERN) as Array<[keyof typeof STAGE_PATTERN, RegExp]>) {
-        if (re.test(s.name)) { cat = k; break }
+      // Buffer is identified by short-code first so the rename to
+      // "Buffer (OD use only)" / "Self-Generated" both resolve consistently.
+      if (s.shortCode === 'SG') {
+        cat = 'BUF'
+      } else {
+        for (const [k, re] of Object.entries(STAGE_PATTERN) as Array<[keyof typeof STAGE_PATTERN, RegExp]>) {
+          if (re.test(s.name)) { cat = k; break }
+        }
       }
       stageInfo.set(s.id, { pipelineId: s.pipelineId, order: s.order, category: cat })
     }
 
-    // (Previously this block built a per-pipeline ordering of stage
-    // categories so cumulative-funnel counts could be derived. The
-    // dashboard now uses snapshot counts — each opp counts in NL plus
-    // exactly the category bucket of its current stage — so the ordering
-    // table is no longer needed.)
+    // Per-pipeline order of each cumulative-funnel category — used to decide
+    // whether a given opp has "reached" CT, SU, or ENR based on its current
+    // stage.order. Buffer is intentionally excluded (snapshot-only, not part
+    // of the funnel) so a card parked in Buffer doesn't bump CT/SU/ENR.
+    const categoryOrderByPipeline = new Map<
+      string,
+      { CT?: number; SU?: number; ENR?: number }
+    >()
+    for (const s of stages) {
+      if (!s.pipelineId) continue
+      const info = stageInfo.get(s.id)
+      if (!info?.category) continue
+      if (info.category === 'NL' || info.category === 'BUF') continue
+      const bucket = categoryOrderByPipeline.get(s.pipelineId) ?? {}
+      bucket[info.category] = s.order
+      categoryOrderByPipeline.set(s.pipelineId, bucket)
+    }
 
     // Fetch branches. Elevated users get the full canonical list MINUS
     // the dashboard-excluded ones (OD etc.); non-elevated users only get
@@ -317,20 +339,22 @@ export async function GET(req: NextRequest) {
     // Counting model:
     //
     // NL  = every opportunity received in the date range, regardless of its
-    //       current stage. This is the "leads received" total — it does NOT
-    //       drop when a lead is dragged out of New Lead into Confirmed for
-    //       Trial / Show Up / Enrolled. Once a lead enters the pipeline it
-    //       is counted as NL for the date range it arrived in, permanently.
+    //       current stage. Permanent count of received leads.
     //
-    // CT / SU / ENR = snapshot counts — opportunities whose CURRENT stage
-    //       matches that category. Dragging a card between stages on the
-    //       kanban moves it from one bucket to another (the source
-    //       decrements, the destination increments). Intermediate stages
-    //       like "Contacted" / "Trial Booked" don't match any pattern in
-    //       STAGE_PATTERN so they're only counted in NL.
+    // CT / SU / ENR = cumulative funnel — counts opps whose current
+    //       stage.order is at or beyond the category's stage. Dragging a
+    //       card forward (NL → CT → SU → ENR) never decreases the earlier
+    //       bucket: once a lead has "reached CT" it stays counted in CT
+    //       even after moving to SU/ENR. Branch managers asked for this so
+    //       milestone numbers stay stable as work progresses.
     //
-    // Rate denominators still use NL (received total) so they read as
-    // "% of received leads that are currently at this stage".
+    // BUF = snapshot — leads currently parked in the Buffer (OD use only)
+    //       stage. Buffer is OUT of the funnel, so a buffer card does NOT
+    //       count toward CT/SU/ENR even though its stage.order may exceed
+    //       those thresholds.
+    //
+    // Rate denominators use NL (received total) so they read as
+    // "% of received leads that have reached this stage".
     for (const o of opps) {
       const m = branchMetrics.get(o.branchId)
       if (!m) continue
@@ -341,10 +365,19 @@ export async function GET(req: NextRequest) {
       // NL: every opp received in the date range (constant under drag)
       m.NL += 1
 
-      // CT / SU / ENR: only the opp's CURRENT stage category increments
-      if (info.category === 'CT')  m.CT  += 1
-      if (info.category === 'SU')  m.SU  += 1
-      if (info.category === 'ENR') m.ENR += 1
+      // Buffer is its own snapshot bucket — skip the cumulative funnel
+      // bump so a parked lead isn't double-counted as CT/SU/ENR.
+      if (info.category === 'BUF') {
+        m.BUF += 1
+        continue
+      }
+
+      // Cumulative funnel — stable under forward drag.
+      const catOrders = categoryOrderByPipeline.get(info.pipelineId)
+      if (!catOrders) continue
+      if (catOrders.CT  !== undefined && info.order >= catOrders.CT)  m.CT  += 1
+      if (catOrders.SU  !== undefined && info.order >= catOrders.SU)  m.SU  += 1
+      if (catOrders.ENR !== undefined && info.order >= catOrders.ENR) m.ENR += 1
     }
 
     for (const m of branchMetrics.values()) {
@@ -361,11 +394,12 @@ export async function GET(req: NextRequest) {
       const CT  = list.reduce((s, x) => s + x.CT, 0)
       const SU  = list.reduce((s, x) => s + x.SU, 0)
       const ENR = list.reduce((s, x) => s + x.ENR, 0)
+      const BUF = list.reduce((s, x) => s + x.BUF, 0)
       return {
         branchId: '',
         branchName: '',
         code: '',
-        NL, CT, SU, ENR,
+        NL, CT, SU, ENR, BUF,
         ...computeRates({ NL, CT, SU, ENR }),
       }
     }
@@ -381,6 +415,7 @@ export async function GET(req: NextRequest) {
       CT:  regionA.CT + regionB.CT + regionC.CT,
       SU:  regionA.SU + regionB.SU + regionC.SU,
       ENR: regionA.ENR + regionB.ENR + regionC.ENR,
+      BUF: regionA.BUF + regionB.BUF + regionC.BUF,
       conversionRate: 0, confirmedRate: 0, showUpRate: 0, enrolmentRate: 0,
     }
     Object.assign(main, computeRates(main))
@@ -397,7 +432,7 @@ export async function GET(req: NextRequest) {
     // Build a 6-month rolling window ending on `to` so the line chart has
     // enough span to be useful. Bucket each opp's createdAt by YYYY-MM and
     // re-apply the same cumulative-stage logic used for the main block.
-    let byMonth: Array<{ month: string; NL: number; CT: number; SU: number; ENR: number }> = []
+    let byMonth: Array<{ month: string; NL: number; CT: number; SU: number; ENR: number; BUF: number }> = []
     if (!elevated) {
       // Bucket by KL month so a lead at 02:00 KL on the 1st doesn't fall
       // back into the previous UTC month. Same +8h shift trick as above.
@@ -420,7 +455,7 @@ export async function GET(req: NextRequest) {
         select: { branchId: true, stageId: true, createdAt: true },
       })
 
-      const monthMap = new Map<string, { NL: number; CT: number; SU: number; ENR: number }>()
+      const monthMap = new Map<string, { NL: number; CT: number; SU: number; ENR: number; BUF: number }>()
       // Pre-seed every month so the chart shows zeros instead of gaps.
       // Iterate in wall-clock space (KL) so we don't drift across DST/UTC.
       const startYear = wall.getUTCFullYear()
@@ -428,12 +463,12 @@ export async function GET(req: NextRequest) {
       for (let m = 0; m < 6; m++) {
         const yyyy = startYear + Math.floor((startMonth + m) / 12)
         const mm = ((startMonth + m) % 12 + 12) % 12
-        monthMap.set(`${yyyy}-${String(mm + 1).padStart(2, '0')}`, { NL: 0, CT: 0, SU: 0, ENR: 0 })
+        monthMap.set(`${yyyy}-${String(mm + 1).padStart(2, '0')}`, { NL: 0, CT: 0, SU: 0, ENR: 0, BUF: 0 })
       }
 
-      // Same counting model as the main block above: NL counts every opp
-      // received that month (constant under drag); CT / SU / ENR are
-      // snapshots of the opp's CURRENT stage category.
+      // Same counting model as the main block: NL = received total,
+      // CT/SU/ENR = cumulative funnel (current stage.order ≥ category order),
+      // BUF = snapshot of current Buffer occupancy (excluded from funnel).
       for (const o of trendOpps) {
         const key = monthKey(new Date(o.createdAt))
         const bucket = monthMap.get(key)
@@ -442,9 +477,15 @@ export async function GET(req: NextRequest) {
         if (!info) continue
 
         bucket.NL += 1
-        if (info.category === 'CT')  bucket.CT  += 1
-        if (info.category === 'SU')  bucket.SU  += 1
-        if (info.category === 'ENR') bucket.ENR += 1
+        if (info.category === 'BUF') {
+          bucket.BUF += 1
+          continue
+        }
+        const catOrders = categoryOrderByPipeline.get(info.pipelineId)
+        if (!catOrders) continue
+        if (catOrders.CT  !== undefined && info.order >= catOrders.CT)  bucket.CT  += 1
+        if (catOrders.SU  !== undefined && info.order >= catOrders.SU)  bucket.SU  += 1
+        if (catOrders.ENR !== undefined && info.order >= catOrders.ENR) bucket.ENR += 1
       }
 
       byMonth = Array.from(monthMap.entries())
