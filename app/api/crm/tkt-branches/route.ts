@@ -18,8 +18,23 @@ export async function GET(req: NextRequest) {
   try {
     const ctx = await requireTktAuth(req.headers)
 
+    // Branch scope:
+    //   - super_admin / platform_admin: see every branch in the tenant.
+    //   - regular user: see only the branches they're explicitly linked to
+    //     via tkt_user_branch (so the ticket form's auto-default lands on
+    //     the user's own branch, not branch 01).
+    const where: Record<string, unknown> = { tenant_id: ctx.tenantId }
+    if (ctx.role === 'user') {
+      if (ctx.branchIds.length === 0) {
+        // No branch assignments — return empty so the UI can show
+        // "ask an admin" rather than silently defaulting to Online.
+        return Response.json([])
+      }
+      where.id = { in: ctx.branchIds }
+    }
+
     const branches = await prisma.tkt_branch.findMany({
-      where: { tenant_id: ctx.tenantId },
+      where,
       orderBy: { branch_number: 'asc' },
       include: {
         _count: { select: { tickets: true, user_branches: true } },
