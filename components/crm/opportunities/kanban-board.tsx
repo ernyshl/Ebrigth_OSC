@@ -13,11 +13,12 @@ import {
   Draggable,
   type DropResult,
 } from '@hello-pangea/dnd'
-import { Plus, Search, X, Loader2, ChevronDown, Users, CalendarRange, AlertTriangle, ArrowRight, MoveRight } from 'lucide-react'
+import { Plus, Search, X, Loader2, ChevronDown, Users, CalendarRange, AlertTriangle, ArrowRight, MoveRight, PenLine } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { startOfWeek, endOfWeek, addWeeks } from 'date-fns'
 import { cn, formatMYR, formatDate } from '@/lib/crm/utils'
-import { useKanban, useMoveOpportunity, useOpportunity, useDeleteOpportunity } from '@/hooks/crm/useOpportunities'
+import { useKanban, useMoveOpportunity, useOpportunity, useDeleteOpportunity, opportunityKeys } from '@/hooks/crm/useOpportunities'
 import { getAgeCategory, ageCategoryClasses, formatChildAge } from '@/lib/crm/age-category'
 import { Trash2 } from 'lucide-react'
 import { useBranchContext } from '../branch-context'
@@ -1367,9 +1368,19 @@ function OpportunityDetailModal({
       stage?: StageLite
       stageId?: string
       stageHistory?: HistoryEntry[]
+      contact?: {
+        id: string
+        notes?: Array<{
+          id: string
+          body: string
+          createdAt: string | Date
+          user: { id: string; name: string | null; email: string } | null
+        }>
+      }
     } | undefined
     isLoading: boolean
   }
+  const notes = full?.contact?.notes ?? []
   // Prefer the detail API's stage — in the "All Branches" aggregate view the
   // parent's stage lookup uses reference-pipeline IDs that won't match the
   // opportunity's own stageId.
@@ -1380,6 +1391,31 @@ function OpportunityDetailModal({
 
   const deleteMutation = useDeleteOpportunity()
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const queryClient = useQueryClient()
+  const [noteText, setNoteText] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
+
+  async function handleAddNote() {
+    const body = noteText.trim()
+    if (!body || savingNote) return
+    setSavingNote(true)
+    try {
+      const res = await fetch(`/api/crm/contacts/${contact.id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body }),
+      })
+      if (!res.ok) throw new Error('Failed to save')
+      setNoteText('')
+      // Refetch the opportunity so the new note appears immediately.
+      void queryClient.invalidateQueries({ queryKey: opportunityKeys.detail(opportunity.id) })
+      toast.success('Note added')
+    } catch {
+      toast.error('Failed to add note')
+    } finally {
+      setSavingNote(false)
+    }
+  }
 
   async function handleDelete() {
     try {
@@ -1399,26 +1435,27 @@ function OpportunityDetailModal({
     if (name) children.push({ name, age })
   }
 
-  // Stages this lead is allowed to move into next. For non-admin lead pipelines
-  // we filter through ALLOWED_LEAD_TRANSITIONS so the dropdown matches the
-  // drag-and-drop rule set exactly; admins (and non-lead pipelines) see every
-  // other stage in pipeline order.
+  // Stages this lead is allowed to move into next. We match by shortCode (not
+  // stage.id) because in the All-Branches aggregate view the opportunity's
+  // own stageId points to its branch's pipeline, while pipelineStages here
+  // comes from the agency-reference pipeline — the IDs won't line up but the
+  // short codes are canonical across every branch.
   const allowedToStages = useMemo<StageLite[]>(() => {
-    const currentStage = pipelineStages.find((s) => s.id === currentStageId)
-    if (!currentStage) return []
+    const normalizedCurrent = displayShortCode ? normalizeStageCode(displayShortCode) : ''
+    if (!normalizedCurrent) return []
     if (canBypassRules) {
       return pipelineStages
-        .filter((s) => s.id !== currentStageId)
+        .filter((s) => normalizeStageCode(s.shortCode) !== normalizedCurrent)
         .slice()
         .sort((a, b) => a.order - b.order)
     }
-    const allowedCodes = ALLOWED_LEAD_TRANSITIONS[normalizeStageCode(currentStage.shortCode)]
+    const allowedCodes = ALLOWED_LEAD_TRANSITIONS[normalizedCurrent]
     if (!allowedCodes || allowedCodes.length === 0) return []
     return pipelineStages
       .filter((s) => allowedCodes.includes(normalizeStageCode(s.shortCode)))
       .slice()
       .sort((a, b) => a.order - b.order)
-  }, [pipelineStages, currentStageId, canBypassRules])
+  }, [pipelineStages, displayShortCode, canBypassRules])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -1614,6 +1651,65 @@ function OpportunityDetailModal({
               </div>
             </section>
           )}
+
+          {/* Notes — branch managers asked for an inline place to drop
+              call/follow-up context without leaving the kanban. Posts to
+              the existing /api/crm/contacts/[id]/notes POST endpoint. */}
+          <section>
+            <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <PenLine className="h-3 w-3" /> Notes
+            </h3>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                void handleAddNote()
+              }}
+              className="space-y-2"
+            >
+              <textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder="Add a note about this lead…"
+                rows={2}
+                disabled={savingNote}
+                className="w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={!noteText.trim() || savingNote}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingNote && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {savingNote ? 'Saving…' : 'Add note'}
+                </button>
+              </div>
+            </form>
+
+            {notes.length === 0 ? (
+              <p className="mt-3 text-xs italic text-slate-500 dark:text-slate-400">
+                No notes yet.
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {notes.map((n) => (
+                  <li
+                    key={n.id}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50"
+                  >
+                    <p className="whitespace-pre-wrap text-sm text-slate-900 dark:text-slate-100">
+                      {n.body}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                      {n.user?.name ?? n.user?.email ?? 'Unknown'}
+                      {' · '}
+                      {formatDate(n.createdAt)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
           {/* Meta */}
           <section>
