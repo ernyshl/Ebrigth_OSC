@@ -139,6 +139,8 @@ interface BranchMetrics {
   branchId: string
   branchName: string
   code: string
+  /** A / B / C from REGIONS, or null for branches outside the canonical list. */
+  region: 'A' | 'B' | 'C' | null
   NL: number
   CT: number
   SU: number
@@ -151,11 +153,19 @@ interface BranchMetrics {
   enrolmentRate: number    // ENR / SU
 }
 
-function zero(): Omit<BranchMetrics, 'branchId' | 'branchName' | 'code'> {
+function zero(): Omit<BranchMetrics, 'branchId' | 'branchName' | 'code' | 'region'> {
   return {
     NL: 0, CT: 0, SU: 0, ENR: 0, BUF: 0,
     conversionRate: 0, confirmedRate: 0, showUpRate: 0, enrolmentRate: 0,
   }
+}
+
+/** Resolve a branch name → region code using the REGIONS map at module scope. */
+function regionFor(branchName: string): 'A' | 'B' | 'C' | null {
+  if (REGIONS.A.includes(branchName)) return 'A'
+  if (REGIONS.B.includes(branchName)) return 'B'
+  if (REGIONS.C.includes(branchName)) return 'C'
+  return null
 }
 
 function computeRates(m: Pick<BranchMetrics, 'NL' | 'CT' | 'SU' | 'ENR'>) {
@@ -332,6 +342,7 @@ export async function GET(req: NextRequest) {
         branchId: b.id,
         branchName: b.name,
         code: BRANCH_CODES[b.name] ?? '',
+        region: regionFor(b.name),
         ...zero(),
       })
     }
@@ -399,6 +410,7 @@ export async function GET(req: NextRequest) {
         branchId: '',
         branchName: '',
         code: '',
+        region: null,
         NL, CT, SU, ENR, BUF,
         ...computeRates({ NL, CT, SU, ENR }),
       }
@@ -411,6 +423,7 @@ export async function GET(req: NextRequest) {
       branchId: '',
       branchName: '',
       code: '',
+      region: null,
       NL:  regionA.NL + regionB.NL + regionC.NL,
       CT:  regionA.CT + regionB.CT + regionC.CT,
       SU:  regionA.SU + regionB.SU + regionC.SU,
@@ -420,13 +433,13 @@ export async function GET(req: NextRequest) {
     }
     Object.assign(main, computeRates(main))
 
-    // Sort branches by region for the per-branch breakdown
-    const orderedBranches = [...REGIONS.A, ...REGIONS.B, ...REGIONS.C]
-      .map((name) => {
-        const b = branches.find((x) => x.name === name)
-        return b ? branchMetrics.get(b.id) : null
-      })
-      .filter((x): x is BranchMetrics => !!x)
+    // Sort branches numerically by the "NN …" name prefix so the dashboard
+    // table and bar chart read 01 → 02 → 03 instead of jumping around by
+    // region order. Region colouring still works via the per-branch
+    // `region` field set during initialisation.
+    const orderedBranches = Array.from(branchMetrics.values()).sort((a, b) =>
+      a.branchName.localeCompare(b.branchName, undefined, { numeric: true }),
+    )
 
     // ── Monthly trend (only for branch-scoped views) ─────────────────────────
     // Build a 6-month rolling window ending on `to` so the line chart has
@@ -497,7 +510,7 @@ export async function GET(req: NextRequest) {
     // non-elevated users so the response shape stays the same but the UI
     // can detect "nothing to render here" cheaply.
     const empty: BranchMetrics = {
-      branchId: '', branchName: '', code: '',
+      branchId: '', branchName: '', code: '', region: null,
       ...zero(),
     }
 

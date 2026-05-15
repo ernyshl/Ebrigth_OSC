@@ -21,6 +21,8 @@ interface BranchMetrics {
   branchId: string
   branchName: string
   code: string
+  /** Region letter from the API; null for region totals or branches outside the canonical list. */
+  region: 'A' | 'B' | 'C' | null
   NL: number
   CT: number
   SU: number
@@ -279,15 +281,15 @@ function BranchBarChart({ branches }: { branches: BranchMetrics[] }) {
         <p className="py-10 text-center text-sm text-slate-400">No leads in this range.</p>
       ) : (
         <div className="space-y-1.5">
-          {branches.map((b, i) => {
-            const regionIndex =
-              i < 7  ? 'A' :
-              i < 14 ? 'B' :
-                       'C'
+          {branches.map((b) => {
+            // Region comes from the API now — the previous index-based logic
+            // assumed branches arrived in regional order, which broke when
+            // we switched to numerical "01 → 23" ordering.
             const barColor =
-              regionIndex === 'A' ? 'bg-rose-500' :
-              regionIndex === 'B' ? 'bg-amber-500' :
-                                    'bg-emerald-500'
+              b.region === 'A' ? 'bg-rose-500' :
+              b.region === 'B' ? 'bg-amber-500' :
+              b.region === 'C' ? 'bg-emerald-500' :
+                                 'bg-slate-400'
             const pctWidth = (b.NL / max) * 100
             return (
               <div key={b.branchId} className="flex items-center gap-3">

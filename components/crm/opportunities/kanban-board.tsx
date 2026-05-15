@@ -13,7 +13,7 @@ import {
   Draggable,
   type DropResult,
 } from '@hello-pangea/dnd'
-import { Plus, Search, X, Loader2, ChevronDown, Users, CalendarRange, AlertTriangle, ArrowRight } from 'lucide-react'
+import { Plus, Search, X, Loader2, ChevronDown, Users, CalendarRange, AlertTriangle, ArrowRight, MoveRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { startOfWeek, endOfWeek, addWeeks } from 'date-fns'
 import { cn, formatMYR, formatDate } from '@/lib/crm/utils'
@@ -896,6 +896,82 @@ export function KanbanBoard({
     [stages, moveMutation, pipelines, selectedPipelineId, canSwitchBranches],
   )
 
+  // Stage change kicked off from the OpportunityDetailModal's picker. The
+  // dropdown there already filters out disallowed transitions (and admins
+  // see every stage), so we don't re-run the blocked-move check here —
+  // just mirror onDragEnd's optimistic update + modal-required branching.
+  const handleStageChangeFromDetail = useCallback(
+    (opportunityId: string, toStageId: string) => {
+      const fromStage = stages.find((s) =>
+        s.opportunities.some((o) => o.id === opportunityId),
+      )
+      const toStage = stages.find((s) => s.id === toStageId)
+      if (!fromStage || !toStage || fromStage.id === toStage.id) return
+
+      const card = fromStage.opportunities.find((o) => o.id === opportunityId)
+      if (!card) return
+
+      // Close the detail modal so a follow-up stage-change popup (CT/ENR/RSD/CL)
+      // takes focus without overlapping the detail card.
+      setDetailCard(null)
+
+      const previousStages = JSON.parse(JSON.stringify(stages)) as KanbanStage[]
+
+      setLocalStages((prev) => {
+        if (!prev) return prev
+        return prev.map((stage) => {
+          if (stage.id === fromStage.id) {
+            return {
+              ...stage,
+              opportunities: stage.opportunities.filter((o) => o.id !== opportunityId),
+            }
+          }
+          if (stage.id === toStage.id) {
+            return {
+              ...stage,
+              opportunities: [
+                { ...card, stageId: toStage.id, lastStageChangeAt: new Date() },
+                ...stage.opportunities,
+              ],
+            }
+          }
+          return stage
+        })
+      })
+
+      const normalized = toStage.name.trim().toLowerCase()
+      const requiresModal =
+        normalized === 'confirmed for trial' ||
+        normalized === 'enrolled' ||
+        normalized === 'reschedule' ||
+        normalized === 'cold lead'
+
+      if (requiresModal) {
+        setPendingMove({
+          opportunityId,
+          branchId: card.branchId,
+          fromStageId: fromStage.id,
+          toStageId,
+          fromStageName: fromStage.name,
+          toStageName: toStage.name,
+          previousStages,
+        })
+        resetStageExtras()
+      } else {
+        void (async () => {
+          try {
+            await moveMutation.mutateAsync({ opportunityId, toStageId })
+            toast.success(`Moved to ${toStage.name}`)
+          } catch {
+            setLocalStages(previousStages)
+            toast.error('Failed to move opportunity')
+          }
+        })()
+      }
+    },
+    [stages, moveMutation],
+  )
+
   // Confirm move
   async function confirmMove() {
     if (!pendingMove || isConfirming) return
@@ -1157,16 +1233,33 @@ export function KanbanBoard({
       )}
 
       {/* Card detail modal — opens when a kanban card is clicked */}
-      {detailCard && (
-        <OpportunityDetailModal
-          opportunity={detailCard}
-          stageName={stages.find((s) => s.id === detailCard.stageId)?.name ?? '—'}
-          stageShortCode={stages.find((s) => s.id === detailCard.stageId)?.shortCode ?? ''}
-          branchName={branches.find((b) => b.id === detailCard.branchId)?.name ?? null}
-          canDelete={canSwitchBranches}
-          onClose={() => setDetailCard(null)}
-        />
-      )}
+      {detailCard && (() => {
+        const currentPipelineName = pipelines.find((p) => p.id === selectedPipelineId)?.name ?? ''
+        const isLeadPipeline =
+          !/recruitment/i.test(currentPipelineName) &&
+          !currentPipelineName.startsWith('Ebright HR')
+        // Admins bypass the rule map; non-lead pipelines (HR Recruitment) have
+        // no enforced flow chart so anything goes there too.
+        const canBypassRules = canSwitchBranches || !isLeadPipeline
+        return (
+          <OpportunityDetailModal
+            opportunity={detailCard}
+            stageName={stages.find((s) => s.id === detailCard.stageId)?.name ?? '—'}
+            stageShortCode={stages.find((s) => s.id === detailCard.stageId)?.shortCode ?? ''}
+            branchName={branches.find((b) => b.id === detailCard.branchId)?.name ?? null}
+            canDelete={canSwitchBranches}
+            pipelineStages={stages.map((s) => ({
+              id: s.id,
+              name: s.name,
+              shortCode: s.shortCode,
+              order: s.order,
+            }))}
+            canBypassRules={canBypassRules}
+            onChangeStage={(toStageId) => handleStageChangeFromDetail(detailCard.id, toStageId)}
+            onClose={() => setDetailCard(null)}
+          />
+        )
+      })()}
 
       {/* Invalid-transition warning popup — shown when a non-admin drags a
           lead to a stage that isn't allowed by the pipeline flow chart. */}
@@ -1240,6 +1333,9 @@ function OpportunityDetailModal({
   stageShortCode,
   branchName,
   canDelete,
+  pipelineStages,
+  canBypassRules,
+  onChangeStage,
   onClose,
 }: {
   opportunity: OpportunityCard
@@ -1248,6 +1344,13 @@ function OpportunityDetailModal({
   /** Resolved from the kanban's branch list. Null when not found (e.g. branch deleted). */
   branchName: string | null
   canDelete: boolean
+  /** All stages in the current pipeline — used to populate the stage picker. */
+  pipelineStages: StageLite[]
+  /** True for admins (canSwitchBranches) and non-lead pipelines (no enforced flow). */
+  canBypassRules: boolean
+  /** Fires when the user picks a new stage in the dropdown. The parent
+   *  handles the optimistic update + popup-or-fire decision. */
+  onChangeStage: (toStageId: string) => void
   onClose: () => void
 }) {
   const { contact } = opportunity
@@ -1295,6 +1398,27 @@ function OpportunityDetailModal({
     const age = (contact as unknown as Record<string, string | null>)[`childAge${i}`]
     if (name) children.push({ name, age })
   }
+
+  // Stages this lead is allowed to move into next. For non-admin lead pipelines
+  // we filter through ALLOWED_LEAD_TRANSITIONS so the dropdown matches the
+  // drag-and-drop rule set exactly; admins (and non-lead pipelines) see every
+  // other stage in pipeline order.
+  const allowedToStages = useMemo<StageLite[]>(() => {
+    const currentStage = pipelineStages.find((s) => s.id === currentStageId)
+    if (!currentStage) return []
+    if (canBypassRules) {
+      return pipelineStages
+        .filter((s) => s.id !== currentStageId)
+        .slice()
+        .sort((a, b) => a.order - b.order)
+    }
+    const allowedCodes = ALLOWED_LEAD_TRANSITIONS[normalizeStageCode(currentStage.shortCode)]
+    if (!allowedCodes || allowedCodes.length === 0) return []
+    return pipelineStages
+      .filter((s) => allowedCodes.includes(normalizeStageCode(s.shortCode)))
+      .slice()
+      .sort((a, b) => a.order - b.order)
+  }, [pipelineStages, currentStageId, canBypassRules])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -1365,6 +1489,44 @@ function OpportunityDetailModal({
               </div>
             )}
           </section>
+
+          {/* Move to stage — rule-filtered picker. Hidden when the modal is
+              still loading the full opportunity (so we don't pre-fill from
+              stale data) or when there are no valid transitions. */}
+          {!loadingFull && (
+            <section>
+              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Move to stage
+              </h3>
+              {allowedToStages.length === 0 ? (
+                <p className="text-xs italic text-slate-500 dark:text-slate-400">
+                  {canBypassRules
+                    ? 'No other stages available in this pipeline.'
+                    : 'This is a terminal stage — no further moves are allowed from here.'}
+                </p>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <MoveRight className="h-4 w-4 shrink-0 text-indigo-500" />
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const id = e.target.value
+                      if (id) onChangeStage(id)
+                    }}
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-800 dark:[&>option]:text-slate-100"
+                    aria-label="Move this lead to a different stage"
+                  >
+                    <option value="">Pick a stage to move this lead to…</option>
+                    {allowedToStages.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.shortCode} — {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Contact */}
           <section>
