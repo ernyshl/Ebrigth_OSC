@@ -14,6 +14,7 @@ import {
   CartesianGrid,
   Legend,
 } from 'recharts'
+import { TrialSchedule } from './trial-schedule'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -150,6 +151,12 @@ export function DashboardClient() {
               regional + per-branch sections. */}
           {data.elevated === false && data.byMonth && data.byMonth.length > 0 && (
             <LeadsByMonthChart data={data.byMonth} />
+          )}
+
+          {/* Trial schedule grid — branch-scoped only. A super-admin viewing
+              the agency-wide rollup has nothing meaningful to plot here. */}
+          {data.elevated === false && branchId && (
+            <TrialSchedule branchId={branchId} />
           )}
 
           {/* Elevated-only sections: regional rollup + per-branch comparison. */}

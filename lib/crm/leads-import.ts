@@ -342,9 +342,49 @@ export async function importLead(
   }
 
   const leadSourceId = await resolveLeadSourceId(prisma, ctx.tenantId, row.lead_source, caches)
-  const { firstName, lastName, childAge, parentFullName } = pickContactName(row)
   const phone = row.phone ? normalizePhone(row.phone) : null
   const submittedAt = row.submitted_at ?? new Date()
+
+  // Sibling-index inference: when the unified view doesn't supply
+  // sibling_index (non-Wix sources mostly) but children_details has more
+  // than one child, we infer which child this row represents by counting
+  // contacts already in the CRM that share this row's phone or email.
+  // First row in for this parent → child[0], second → child[1], etc.
+  // Without this fallback the contact's firstName would be saved as the
+  // parent's full name and every subsequent sibling card would look
+  // identical, which is exactly the "two Shuzana cards" bug from prod.
+  let effectiveSiblingIndex = row.sibling_index
+  if (effectiveSiblingIndex == null && row.children_details) {
+    try {
+      const parsed = JSON.parse(row.children_details) as WixChildEntry[]
+      if (Array.isArray(parsed) && parsed.length >= 1) {
+        const orClauses: Array<Record<string, unknown>> = []
+        if (phone) orClauses.push({ phone })
+        if (row.email && row.email.trim()) orClauses.push({ email: row.email })
+        if (orClauses.length > 0) {
+          const existing = await prisma.crm_contact.count({
+            where: { tenantId: ctx.tenantId, deletedAt: null, OR: orClauses },
+          })
+          const inferred = existing + 1
+          // Only adopt the inference when there's actually a corresponding
+          // child entry — otherwise we'd just rewrite a parent contact with
+          // garbage. Falls through to the parent-name branch in that case.
+          if (inferred <= parsed.length) {
+            effectiveSiblingIndex = inferred
+          }
+        }
+      }
+    } catch {
+      // children_details unparseable — keep effectiveSiblingIndex as null
+      // so pickContactName falls back to the parent's name.
+    }
+  }
+
+  const rowForName: UnifiedLeadRow =
+    effectiveSiblingIndex !== row.sibling_index
+      ? { ...row, sibling_index: effectiveSiblingIndex }
+      : row
+  const { firstName, lastName, childAge, parentFullName } = pickContactName(rowForName)
 
   // Disambiguated externalSourceId. Historical seeds used `<base_id>#<sibling>`
   // (e.g. "16391#1"), but master_leads_base.id is NOT unique over time —
@@ -358,7 +398,9 @@ export async function importLead(
   // valid; they just can't conflict with the new ones (different
   // delimiter, different shape).
   const baseId = row.source_id.includes('#') ? row.source_id.split('#')[0] : row.source_id
-  const siblingIdx = row.sibling_index ?? 1
+  // Use the inferred sibling index so two non-Wix children of the same parent
+  // get distinct externalSourceIds ("-1", "-2") instead of colliding on "-1".
+  const siblingIdx = effectiveSiblingIndex ?? 1
   const externalSourceId = `${baseId}-${Math.floor(submittedAt.getTime() / 1000)}-${siblingIdx}`
 
   try {
