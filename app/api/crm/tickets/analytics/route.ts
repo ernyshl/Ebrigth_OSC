@@ -180,6 +180,31 @@ export async function GET(req: NextRequest) {
     })
     const weeklyTotal = sortedWeeks.map((wk) => ({ week: wk, total: overallWeekTotals.get(wk) ?? 0 }))
 
+    // ─── Daily trend (sparkline series for /crm/analytics) ───────────────────
+    // The older Analytics page renders a per-day sparkline, while the newer
+    // Ticket Dashboard uses the weekly buckets above. We emit both so a
+    // single endpoint serves both pages without either crashing on missing
+    // fields. Buckets are seeded for every KL day in the range so the chart
+    // shows zeros instead of holes.
+    const DAY_MS = 24 * 3600 * 1000
+    const trendBuckets = new Map<string, number>()
+    const trendStartKL = startOfDayKL(from)
+    for (let t = trendStartKL.getTime(); t <= to.getTime(); t += DAY_MS) {
+      const wall = new Date(t + KL_OFFSET_MS)
+      const key = wall.toISOString().slice(0, 10)
+      trendBuckets.set(key, 0)
+    }
+    for (const tk of tickets) {
+      const wall = new Date(new Date(tk.created_at).getTime() + KL_OFFSET_MS)
+      const key = wall.toISOString().slice(0, 10)
+      if (trendBuckets.has(key)) {
+        trendBuckets.set(key, (trendBuckets.get(key) ?? 0) + 1)
+      }
+    }
+    const trend = Array.from(trendBuckets.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count }))
+
     // ─── Resolution metrics ───────────────────────────────────────────────────
     const completed = tickets.filter((t) => t.status === 'complete' && t.completed_at)
     const avgResolutionMs = completed.length
@@ -207,8 +232,15 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5)
 
+    // Day count for the legacy /crm/analytics header ("N day window"). Always
+    // at least 1 so the label reads sensibly for the today/yesterday presets.
+    const periodDays = Math.max(
+      1,
+      Math.round((to.getTime() - from.getTime()) / DAY_MS),
+    )
+
     return Response.json({
-      period:        { from: from.toISOString(), to: to.toISOString() },
+      period:        { from: from.toISOString(), to: to.toISOString(), days: periodDays },
       scope:         { isAdmin, viewerBranchIds: ctx.branchIds, viewerRole: ctx.role },
       totals: {
         all:         tickets.length,
@@ -219,9 +251,12 @@ export async function GET(req: NextRequest) {
       },
       byPlatform,
       topBranches,
+      // Weekly buckets — consumed by /crm/tickets/dashboard.
       weeklyTotal,
       weeklyByBranch,
       weeklyByPlatform,
+      // Daily bucket — consumed by /crm/analytics sparkline.
+      trend,
       avgResolutionHours,
       rejectionRate,
       topAdmins,

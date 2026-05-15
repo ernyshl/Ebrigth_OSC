@@ -13,11 +13,12 @@ import {
   Draggable,
   type DropResult,
 } from '@hello-pangea/dnd'
-import { Plus, Search, X, Loader2, ChevronDown, Users, CalendarRange, AlertTriangle, ArrowRight } from 'lucide-react'
+import { Plus, Search, X, Loader2, ChevronDown, Users, CalendarRange, AlertTriangle, ArrowRight, MoveRight, PenLine } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { startOfWeek, endOfWeek, addWeeks } from 'date-fns'
 import { cn, formatMYR, formatDate } from '@/lib/crm/utils'
-import { useKanban, useMoveOpportunity, useOpportunity, useDeleteOpportunity } from '@/hooks/crm/useOpportunities'
+import { useKanban, useMoveOpportunity, useOpportunity, useDeleteOpportunity, opportunityKeys } from '@/hooks/crm/useOpportunities'
 import { getAgeCategory, ageCategoryClasses, formatChildAge } from '@/lib/crm/age-category'
 import { Trash2 } from 'lucide-react'
 import { useBranchContext } from '../branch-context'
@@ -577,14 +578,19 @@ function BulkActionBar({
     <div className="flex items-center gap-3 px-4 py-2 bg-indigo-600 text-white text-sm font-medium">
       <span>{count} selected</span>
       <div className="flex items-center gap-2 ml-auto">
+        {/* Native <select> renders the open dropdown panel with OS defaults, so
+            colours from the closed-state classes don't propagate to <option>.
+            Force a readable white-panel/dark-text combo on the options so it
+            stays legible against the indigo BulkActionBar in both light and
+            dark mode. */}
         <select
           value={targetStage}
           onChange={(e) => setTargetStage(e.target.value)}
-          className="rounded bg-white/20 border border-white/30 px-2 py-1 text-sm text-white focus:outline-none"
+          className="rounded bg-white/20 border border-white/30 px-2 py-1 text-sm text-white focus:outline-none [&>option]:bg-white [&>option]:text-slate-900"
         >
-          <option value="">Move to stage...</option>
+          <option value="" className="bg-white text-slate-900">Move to stage...</option>
           {stages.map((s) => (
-            <option key={s.id} value={s.id}>
+            <option key={s.id} value={s.id} className="bg-white text-slate-900">
               {s.name}
             </option>
           ))}
@@ -891,6 +897,82 @@ export function KanbanBoard({
     [stages, moveMutation, pipelines, selectedPipelineId, canSwitchBranches],
   )
 
+  // Stage change kicked off from the OpportunityDetailModal's picker. The
+  // dropdown there already filters out disallowed transitions (and admins
+  // see every stage), so we don't re-run the blocked-move check here —
+  // just mirror onDragEnd's optimistic update + modal-required branching.
+  const handleStageChangeFromDetail = useCallback(
+    (opportunityId: string, toStageId: string) => {
+      const fromStage = stages.find((s) =>
+        s.opportunities.some((o) => o.id === opportunityId),
+      )
+      const toStage = stages.find((s) => s.id === toStageId)
+      if (!fromStage || !toStage || fromStage.id === toStage.id) return
+
+      const card = fromStage.opportunities.find((o) => o.id === opportunityId)
+      if (!card) return
+
+      // Close the detail modal so a follow-up stage-change popup (CT/ENR/RSD/CL)
+      // takes focus without overlapping the detail card.
+      setDetailCard(null)
+
+      const previousStages = JSON.parse(JSON.stringify(stages)) as KanbanStage[]
+
+      setLocalStages((prev) => {
+        if (!prev) return prev
+        return prev.map((stage) => {
+          if (stage.id === fromStage.id) {
+            return {
+              ...stage,
+              opportunities: stage.opportunities.filter((o) => o.id !== opportunityId),
+            }
+          }
+          if (stage.id === toStage.id) {
+            return {
+              ...stage,
+              opportunities: [
+                { ...card, stageId: toStage.id, lastStageChangeAt: new Date() },
+                ...stage.opportunities,
+              ],
+            }
+          }
+          return stage
+        })
+      })
+
+      const normalized = toStage.name.trim().toLowerCase()
+      const requiresModal =
+        normalized === 'confirmed for trial' ||
+        normalized === 'enrolled' ||
+        normalized === 'reschedule' ||
+        normalized === 'cold lead'
+
+      if (requiresModal) {
+        setPendingMove({
+          opportunityId,
+          branchId: card.branchId,
+          fromStageId: fromStage.id,
+          toStageId,
+          fromStageName: fromStage.name,
+          toStageName: toStage.name,
+          previousStages,
+        })
+        resetStageExtras()
+      } else {
+        void (async () => {
+          try {
+            await moveMutation.mutateAsync({ opportunityId, toStageId })
+            toast.success(`Moved to ${toStage.name}`)
+          } catch {
+            setLocalStages(previousStages)
+            toast.error('Failed to move opportunity')
+          }
+        })()
+      }
+    },
+    [stages, moveMutation],
+  )
+
   // Confirm move
   async function confirmMove() {
     if (!pendingMove || isConfirming) return
@@ -1152,16 +1234,33 @@ export function KanbanBoard({
       )}
 
       {/* Card detail modal — opens when a kanban card is clicked */}
-      {detailCard && (
-        <OpportunityDetailModal
-          opportunity={detailCard}
-          stageName={stages.find((s) => s.id === detailCard.stageId)?.name ?? '—'}
-          stageShortCode={stages.find((s) => s.id === detailCard.stageId)?.shortCode ?? ''}
-          branchName={branches.find((b) => b.id === detailCard.branchId)?.name ?? null}
-          canDelete={canSwitchBranches}
-          onClose={() => setDetailCard(null)}
-        />
-      )}
+      {detailCard && (() => {
+        const currentPipelineName = pipelines.find((p) => p.id === selectedPipelineId)?.name ?? ''
+        const isLeadPipeline =
+          !/recruitment/i.test(currentPipelineName) &&
+          !currentPipelineName.startsWith('Ebright HR')
+        // Admins bypass the rule map; non-lead pipelines (HR Recruitment) have
+        // no enforced flow chart so anything goes there too.
+        const canBypassRules = canSwitchBranches || !isLeadPipeline
+        return (
+          <OpportunityDetailModal
+            opportunity={detailCard}
+            stageName={stages.find((s) => s.id === detailCard.stageId)?.name ?? '—'}
+            stageShortCode={stages.find((s) => s.id === detailCard.stageId)?.shortCode ?? ''}
+            branchName={branches.find((b) => b.id === detailCard.branchId)?.name ?? null}
+            canDelete={canSwitchBranches}
+            pipelineStages={stages.map((s) => ({
+              id: s.id,
+              name: s.name,
+              shortCode: s.shortCode,
+              order: s.order,
+            }))}
+            canBypassRules={canBypassRules}
+            onChangeStage={(toStageId) => handleStageChangeFromDetail(detailCard.id, toStageId)}
+            onClose={() => setDetailCard(null)}
+          />
+        )
+      })()}
 
       {/* Invalid-transition warning popup — shown when a non-admin drags a
           lead to a stage that isn't allowed by the pipeline flow chart. */}
@@ -1235,6 +1334,9 @@ function OpportunityDetailModal({
   stageShortCode,
   branchName,
   canDelete,
+  pipelineStages,
+  canBypassRules,
+  onChangeStage,
   onClose,
 }: {
   opportunity: OpportunityCard
@@ -1243,6 +1345,13 @@ function OpportunityDetailModal({
   /** Resolved from the kanban's branch list. Null when not found (e.g. branch deleted). */
   branchName: string | null
   canDelete: boolean
+  /** All stages in the current pipeline — used to populate the stage picker. */
+  pipelineStages: StageLite[]
+  /** True for admins (canSwitchBranches) and non-lead pipelines (no enforced flow). */
+  canBypassRules: boolean
+  /** Fires when the user picks a new stage in the dropdown. The parent
+   *  handles the optimistic update + popup-or-fire decision. */
+  onChangeStage: (toStageId: string) => void
   onClose: () => void
 }) {
   const { contact } = opportunity
@@ -1259,9 +1368,19 @@ function OpportunityDetailModal({
       stage?: StageLite
       stageId?: string
       stageHistory?: HistoryEntry[]
+      contact?: {
+        id: string
+        notes?: Array<{
+          id: string
+          body: string
+          createdAt: string | Date
+          user: { id: string; name: string | null; email: string } | null
+        }>
+      }
     } | undefined
     isLoading: boolean
   }
+  const notes = full?.contact?.notes ?? []
   // Prefer the detail API's stage — in the "All Branches" aggregate view the
   // parent's stage lookup uses reference-pipeline IDs that won't match the
   // opportunity's own stageId.
@@ -1272,6 +1391,31 @@ function OpportunityDetailModal({
 
   const deleteMutation = useDeleteOpportunity()
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const queryClient = useQueryClient()
+  const [noteText, setNoteText] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
+
+  async function handleAddNote() {
+    const body = noteText.trim()
+    if (!body || savingNote) return
+    setSavingNote(true)
+    try {
+      const res = await fetch(`/api/crm/contacts/${contact.id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body }),
+      })
+      if (!res.ok) throw new Error('Failed to save')
+      setNoteText('')
+      // Refetch the opportunity so the new note appears immediately.
+      void queryClient.invalidateQueries({ queryKey: opportunityKeys.detail(opportunity.id) })
+      toast.success('Note added')
+    } catch {
+      toast.error('Failed to add note')
+    } finally {
+      setSavingNote(false)
+    }
+  }
 
   async function handleDelete() {
     try {
@@ -1290,6 +1434,28 @@ function OpportunityDetailModal({
     const age = (contact as unknown as Record<string, string | null>)[`childAge${i}`]
     if (name) children.push({ name, age })
   }
+
+  // Stages this lead is allowed to move into next. We match by shortCode (not
+  // stage.id) because in the All-Branches aggregate view the opportunity's
+  // own stageId points to its branch's pipeline, while pipelineStages here
+  // comes from the agency-reference pipeline — the IDs won't line up but the
+  // short codes are canonical across every branch.
+  const allowedToStages = useMemo<StageLite[]>(() => {
+    const normalizedCurrent = displayShortCode ? normalizeStageCode(displayShortCode) : ''
+    if (!normalizedCurrent) return []
+    if (canBypassRules) {
+      return pipelineStages
+        .filter((s) => normalizeStageCode(s.shortCode) !== normalizedCurrent)
+        .slice()
+        .sort((a, b) => a.order - b.order)
+    }
+    const allowedCodes = ALLOWED_LEAD_TRANSITIONS[normalizedCurrent]
+    if (!allowedCodes || allowedCodes.length === 0) return []
+    return pipelineStages
+      .filter((s) => allowedCodes.includes(normalizeStageCode(s.shortCode)))
+      .slice()
+      .sort((a, b) => a.order - b.order)
+  }, [pipelineStages, displayShortCode, canBypassRules])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -1360,6 +1526,44 @@ function OpportunityDetailModal({
               </div>
             )}
           </section>
+
+          {/* Move to stage — rule-filtered picker. Hidden when the modal is
+              still loading the full opportunity (so we don't pre-fill from
+              stale data) or when there are no valid transitions. */}
+          {!loadingFull && (
+            <section>
+              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Move to stage
+              </h3>
+              {allowedToStages.length === 0 ? (
+                <p className="text-xs italic text-slate-500 dark:text-slate-400">
+                  {canBypassRules
+                    ? 'No other stages available in this pipeline.'
+                    : 'This is a terminal stage — no further moves are allowed from here.'}
+                </p>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <MoveRight className="h-4 w-4 shrink-0 text-indigo-500" />
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const id = e.target.value
+                      if (id) onChangeStage(id)
+                    }}
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-800 dark:[&>option]:text-slate-100"
+                    aria-label="Move this lead to a different stage"
+                  >
+                    <option value="">Pick a stage to move this lead to…</option>
+                    {allowedToStages.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.shortCode} — {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Contact */}
           <section>
@@ -1447,6 +1651,65 @@ function OpportunityDetailModal({
               </div>
             </section>
           )}
+
+          {/* Notes — branch managers asked for an inline place to drop
+              call/follow-up context without leaving the kanban. Posts to
+              the existing /api/crm/contacts/[id]/notes POST endpoint. */}
+          <section>
+            <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <PenLine className="h-3 w-3" /> Notes
+            </h3>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                void handleAddNote()
+              }}
+              className="space-y-2"
+            >
+              <textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder="Add a note about this lead…"
+                rows={2}
+                disabled={savingNote}
+                className="w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={!noteText.trim() || savingNote}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingNote && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {savingNote ? 'Saving…' : 'Add note'}
+                </button>
+              </div>
+            </form>
+
+            {notes.length === 0 ? (
+              <p className="mt-3 text-xs italic text-slate-500 dark:text-slate-400">
+                No notes yet.
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {notes.map((n) => (
+                  <li
+                    key={n.id}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50"
+                  >
+                    <p className="whitespace-pre-wrap text-sm text-slate-900 dark:text-slate-100">
+                      {n.body}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                      {n.user?.name ?? n.user?.email ?? 'Unknown'}
+                      {' · '}
+                      {formatDate(n.createdAt)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
           {/* Meta */}
           <section>

@@ -292,6 +292,15 @@ export async function getOpportunityById(
         include: {
           leadSource: true,
           contactTags: { include: { tag: true } },
+          // Lead detail modal renders these inline so the BM can read recent
+          // context + add a new note without leaving the kanban.
+          notes: {
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+            },
+          },
         },
       },
       stage: true,
