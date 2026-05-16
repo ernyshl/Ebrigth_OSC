@@ -130,6 +130,27 @@ export function hasBacklog(student: Student): boolean {
   return false;
 }
 
+/** Chapter at which a student becomes eligible for their CURRENT-grade FA.
+ *  The classroom rule: a student must have progressed to C9 within their
+ *  current grade before they can sit for that grade's Foundation Appraisal.
+ *  Grades they've already completed (i.e., grades below current) are always
+ *  available — they've moved past, so the tickbox is just recording history. */
+export const FA_CURRENT_GRADE_MIN_CHAPTER = 9;
+
+/** The list of grades a student can be invited to appraise right now.
+ *    - All grades below current grade are always returned (past grades).
+ *    - The current grade is only returned if student.credit >= 9
+ *      (the C9 threshold for current-grade FA eligibility).
+ *  Returned in ascending order. */
+export function invitableGradesFor(student: Student): number[] {
+  const grades: number[] = [];
+  for (let g = 1; g < student.grade; g++) grades.push(g);
+  if (student.credit >= FA_CURRENT_GRADE_MIN_CHAPTER) {
+    grades.push(student.grade);
+  }
+  return grades;
+}
+
 // ----------------------------------------------------------------------------
 // Invitation — one student invited to one session
 // ----------------------------------------------------------------------------

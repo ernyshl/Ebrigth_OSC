@@ -18,6 +18,9 @@ export const CreateContactSchema = z.object({
   childAge3: z.string().optional(),
   childName4: z.string().optional(),
   childAge4: z.string().optional(),
+  /** Parent's display name when the contact row represents a child (sibling-
+   *  exploded import). Editable so a BM can correct misimported leads. */
+  parentFullName: z.string().optional(),
   tagIds: z.array(z.string().uuid()).optional(),
 })
 

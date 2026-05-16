@@ -8,6 +8,8 @@ import { prisma } from '@/lib/crm/db'
 import { getOpportunityById } from '@/server/queries/opportunities'
 import { resolveBranchAccess } from '@/lib/crm/branch-access'
 import { getAgeCategory, ageCategoryClasses, formatChildAge, type AgeCategory } from '@/lib/crm/age-category'
+import { StudentEditCard } from '@/components/crm/opportunities/student-edit-card'
+import { NotesPanel, type NotePanelEntry } from '@/components/crm/opportunities/notes-panel'
 
 export const metadata = {
   title: 'Lead Detail | Ebright CRM',
@@ -62,9 +64,12 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
   const studentAge  = cExt.childAge1?.trim() || null
   const studentLevel: AgeCategory | null = getAgeCategory(studentAge)
 
-  // Siblings — for sibling-exploded imports (raw_wix_leads OR master_leads_base),
-  // every sibling shares the same parent UUID prefix in externalSourceId. The
-  // pattern is "<parent_uuid>#<sibling_index>".
+  // Related leads — any other contact in the same tenant whose parent contact
+  // info matches this one (shared phone, shared email, or shared
+  // externalSourceId UUID prefix). Older Wix imports used "<uuid>#<idx>" so
+  // the prefix match still catches those; the new dash format imports get
+  // matched by phone/email instead. The OR keeps it robust across whichever
+  // path the rows came in from.
   let siblings: Array<{
     id: string
     name: string
@@ -74,26 +79,37 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
     stageCode: string | null
   }> = []
 
-  if (
-    (cExt.externalSourceTable === 'raw_wix_leads' ||
-     cExt.externalSourceTable === 'master_leads_base' ||
-     cExt.externalSourceTable === 'trial_form') &&
+  const idPrefixMatch =
+    cExt.externalSourceTable &&
     cExt.externalSourceId?.includes('#')
-  ) {
-    const parentUuid = cExt.externalSourceId.split('#')[0]
+      ? {
+          externalSourceTable: cExt.externalSourceTable,
+          externalSourceId:    { startsWith: `${cExt.externalSourceId.split('#')[0]}#` },
+        }
+      : null
+
+  // Build the OR clauses — phone and email lookups are skipped when the
+  // contact's value is null/blank so we don't match every other contact
+  // with a NULL phone (~ a lot of false positives).
+  const orClauses: Array<Record<string, unknown>> = []
+  if (contact.phone && contact.phone.trim()) orClauses.push({ phone: contact.phone })
+  if (contact.email && contact.email.trim()) orClauses.push({ email: contact.email })
+  if (idPrefixMatch) orClauses.push(idPrefixMatch)
+
+  if (orClauses.length > 0) {
     const rows = await prisma.crm_contact.findMany({
       where: {
         tenantId: access.tenantId,
-        externalSourceTable: cExt.externalSourceTable,
-        externalSourceId: { startsWith: `${parentUuid}#` },
         id: { not: contact.id },
         deletedAt: null,
+        OR: orClauses,
       },
       select: {
         id: true,
         firstName: true,
         lastName: true,
         childAge1: true,
+        parentFullName: true,
         opportunities: {
           where: { deletedAt: null },
           select: { id: true, stage: { select: { shortCode: true } } },
@@ -101,16 +117,19 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
           take: 1,
         },
       },
-      orderBy: { externalSourceId: 'asc' },
+      orderBy: { createdAt: 'asc' },
     })
 
     siblings = rows.map((r) => {
-      const name = `${r.firstName} ${r.lastName ?? ''}`.trim()
+      // When the contact came in pre-sibling-explode (firstName actually
+      // holds the parent's name), surface that as the row label — at least
+      // the link is useful even if the name reads as the parent's.
+      const displayName = `${r.firstName} ${r.lastName ?? ''}`.trim()
       const age = r.childAge1?.trim() || null
       const opportunity = r.opportunities[0] ?? null
       return {
         id: r.id,
-        name,
+        name: displayName,
         age,
         level: getAgeCategory(age),
         opportunityId: opportunity?.id ?? null,
@@ -196,10 +215,27 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
       <div className="mt-4 grid gap-4 lg:grid-cols-[320px_1fr]">
         {/* Left rail — contact + opportunity facts */}
         <aside className="space-y-4">
-          {/* Student — name, age, and the Junior/Mid/Senior level pill. */}
+          {/* Editable Student & Parent card — BMs / super-admins can correct
+              misimported leads (parent-name-shown-as-student-name, missing
+              age, etc.). Sibling-explode bugs end up here in production. */}
+          <StudentEditCard
+            contactId={contact.id}
+            initial={{
+              firstName:      contact.firstName,
+              lastName:       contact.lastName,
+              childAge1:      cExt.childAge1,
+              parentFullName: cExt.parentFullName,
+            }}
+            isChild={isChild}
+          />
+
+          {/* Student — name, age, and the Junior/Mid/Senior level pill.
+              Kept read-only because the StudentEditCard above is the single
+              source of edit truth; this section just adds the Level pill
+              that doesn't fit the compact editor. */}
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
             <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Student
+              Student details
             </h3>
             <div className="space-y-2 text-sm">
               <Row icon={<GraduationCap className="h-3.5 w-3.5" />} label="Name" value={studentName} />
@@ -269,13 +305,15 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
             </section>
           )}
 
-          {/* Siblings — only shown for Wix sibling-exploded imports. Each
-              sibling links to its own lead detail; rows without an active
-              opportunity are rendered disabled. */}
+          {/* Related leads — every other lead in the tenant that shares the
+              parent's contact info (phone / email) or comes from the same
+              raw submission (legacy "<uuid>#<idx>" externalSourceId pattern).
+              Rows without an active opportunity render disabled but stay
+              visible so the BM can see the full sibling family. */}
           {siblings.length > 0 && (
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <h3 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                <Users className="h-3 w-3" /> Siblings ({siblings.length})
+                <Users className="h-3 w-3" /> Related Leads ({siblings.length})
               </h3>
               <ul className="space-y-2">
                 {siblings.map((s) => {
@@ -325,8 +363,16 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
           )}
         </aside>
 
-        {/* Right column — Activity timeline */}
-        <section className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        {/* Right column — Notes + Activity timeline */}
+        <div className="space-y-4">
+          <NotesPanel
+            contactId={contact.id}
+            initial={
+              ((contact as unknown as { notes?: NotePanelEntry[] }).notes ?? []) as NotePanelEntry[]
+            }
+          />
+
+          <section className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <header className="flex items-center gap-2 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
             <Clock className="h-4 w-4 text-slate-500" />
             <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -399,6 +445,7 @@ export default async function OpportunityDetailPage({ params }: PageProps) {
             )}
           </div>
         </section>
+        </div>
       </div>
     </div>
   )

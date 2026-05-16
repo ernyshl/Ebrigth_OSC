@@ -13,8 +13,10 @@ import {
   Draggable,
   type DropResult,
 } from '@hello-pangea/dnd'
-import { Plus, Search, X, Loader2, ChevronDown, Users, CalendarRange, AlertTriangle, ArrowRight, MoveRight, PenLine } from 'lucide-react'
+import { Plus, Search, X, Loader2, ChevronDown, Users, CalendarRange, AlertTriangle, ArrowRight, MoveRight, PenLine, Settings2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
+import { CustomiseCardDrawer } from './customise-card-drawer'
+import { loadCardPrefs, saveCardPrefs, type CardPrefs, DEFAULT_CARD_PREFS } from '@/lib/crm/kanban-card-prefs'
 import { toast } from 'sonner'
 import { startOfWeek, endOfWeek, addWeeks } from 'date-fns'
 import { cn, formatMYR, formatDate } from '@/lib/crm/utils'
@@ -97,6 +99,7 @@ function VirtualColumnList({
   stageName,
   onCardClick,
   onToggleSelect,
+  cardPrefs,
 }: {
   items: OpportunityCard[]
   stuckHoursYellow: number
@@ -106,6 +109,7 @@ function VirtualColumnList({
   stageName?: string
   onCardClick?: (opp: OpportunityCard) => void
   onToggleSelect?: (id: string) => void
+  cardPrefs: CardPrefs
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -172,6 +176,7 @@ function VirtualColumnList({
                   isDragging={snapshot.isDragging}
                   onClick={() => onCardClick?.(opp)}
                   onToggleSelect={onToggleSelect ? () => onToggleSelect(opp.id) : undefined}
+                  prefs={cardPrefs}
                 />
               </div>
             )}
@@ -194,12 +199,14 @@ function KanbanColumn({
   onAddCard,
   onCardClick,
   onToggleSelect,
+  cardPrefs,
 }: {
   stage: KanbanStage
   selectedIds: Set<string>
   onAddCard: (stageId: string) => void
   onCardClick?: (opp: OpportunityCard) => void
   onToggleSelect?: (id: string) => void
+  cardPrefs: CardPrefs
 }) {
   const totalValue = stage.opportunities.reduce(
     (sum, o) => sum + Number(o.value),
@@ -261,6 +268,7 @@ function KanbanColumn({
               stageName={stage.name}
               onCardClick={onCardClick}
               onToggleSelect={onToggleSelect}
+              cardPrefs={cardPrefs}
             />
             {provided.placeholder}
           </div>
@@ -371,6 +379,8 @@ interface FiltersBarProps {
   tagFilter: string  // '' = all, otherwise tag id
   onTagFilterChange: (s: string) => void
   tagOptions: Array<{ id: string; name: string; color: string }>
+  /** Opens the Customise Card drawer. Mirrors GHL's "Manage Fields" button. */
+  onOpenCustomiseCard: () => void
 }
 
 function FiltersBar({
@@ -395,6 +405,7 @@ function FiltersBar({
   tagFilter,
   onTagFilterChange,
   tagOptions,
+  onOpenCustomiseCard,
 }: FiltersBarProps) {
   const pipelineDisabled = !canSwitchPipelines || pipelineLocked
   return (
@@ -553,6 +564,22 @@ function FiltersBar({
         </select>
         <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
       </div>
+
+      {/* Spacer pushes Manage Fields to the right edge, GHL-style. */}
+      <div className="ml-auto" />
+
+      {/* Manage Fields — opens the Customise Card drawer. */}
+      <button
+        type="button"
+        onClick={onOpenCustomiseCard}
+        title="Customise the kanban card layout"
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700',
+          'dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-indigo-400 dark:hover:text-indigo-300',
+        )}
+      >
+        <Settings2 className="h-3.5 w-3.5" /> Manage Fields
+      </button>
     </div>
   )
 }
@@ -641,6 +668,14 @@ export function KanbanBoard({
 }: KanbanBoardProps) {
   const [selectedPipelineId, setSelectedPipelineId] = useState(initialPipelineId)
   const [searchInput, setSearchInput] = useState('')
+  // Card customisation — persisted per browser via localStorage.
+  // Starts at the project default so first render matches SSR; the
+  // localStorage value is hydrated client-side after mount.
+  const [cardPrefs, setCardPrefs] = useState<CardPrefs>(DEFAULT_CARD_PREFS)
+  const [customiseOpen, setCustomiseOpen] = useState(false)
+  useEffect(() => {
+    setCardPrefs(loadCardPrefs())
+  }, [])
   // Branch filter UI was removed — the pipeline selector already implies a single
   // branch. This state is kept in sync with the selected pipeline so the
   // "Add card" modal pre-fills the right branch.
@@ -1126,6 +1161,7 @@ export function KanbanBoard({
         tagFilter={tagFilter}
         onTagFilterChange={setTagFilter}
         tagOptions={tagOptions}
+        onOpenCustomiseCard={() => setCustomiseOpen(true)}
       />
 
       {/* Bulk action bar */}
@@ -1179,6 +1215,7 @@ export function KanbanBoard({
                   onAddCard={(stageId) => setAddCardStageId(stageId)}
                   onCardClick={setDetailCard}
                   onToggleSelect={toggleSelect}
+                  cardPrefs={cardPrefs}
                 />
               ))}
             </div>
@@ -1274,6 +1311,19 @@ export function KanbanBoard({
           onClose={() => setBlockedMove(null)}
         />
       )}
+
+      {/* Customise Card drawer — GHL-style field picker for the kanban cards.
+          Persists per browser via localStorage. */}
+      <CustomiseCardDrawer
+        open={customiseOpen}
+        value={cardPrefs}
+        onClose={() => setCustomiseOpen(false)}
+        onApply={(next) => {
+          setCardPrefs(next)
+          saveCardPrefs(next)
+          setCustomiseOpen(false)
+        }}
+      />
     </div>
   )
 }
@@ -1394,6 +1444,63 @@ function OpportunityDetailModal({
   const queryClient = useQueryClient()
   const [noteText, setNoteText] = useState('')
   const [savingNote, setSavingNote] = useState(false)
+
+  // Inline student-details editor — toggled by the pencil in the Student
+  // header. Form values are seeded from the current contact every time the
+  // editor opens so Cancel + reopen always shows the latest server state.
+  const [isEditingStudent, setIsEditingStudent] = useState(false)
+  const [studentDraft, setStudentDraft] = useState({
+    firstName:      '',
+    lastName:       '',
+    childAge1:      '',
+    parentFullName: '',
+  })
+  const [savingStudent, setSavingStudent] = useState(false)
+
+  function openStudentEditor() {
+    setStudentDraft({
+      firstName:      contact.firstName,
+      lastName:       contact.lastName ?? '',
+      childAge1:      (contact as unknown as { childAge1?: string | null }).childAge1 ?? '',
+      parentFullName: contact.parentFullName ?? '',
+    })
+    setIsEditingStudent(true)
+  }
+
+  async function handleSaveStudent() {
+    if (savingStudent) return
+    const firstName = studentDraft.firstName.trim()
+    if (!firstName) {
+      toast.error('Student first name is required')
+      return
+    }
+    setSavingStudent(true)
+    try {
+      const res = await fetch(`/api/crm/contacts/${contact.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName,
+          lastName:       studentDraft.lastName.trim() || undefined,
+          childAge1:      studentDraft.childAge1.trim() || undefined,
+          parentFullName: studentDraft.parentFullName.trim() || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error((body as { error?: string }).error ?? 'Failed to save')
+      }
+      toast.success('Student details updated')
+      setIsEditingStudent(false)
+      // Refresh both the detail fetch and the kanban so the card label updates.
+      void queryClient.invalidateQueries({ queryKey: opportunityKeys.detail(opportunity.id) })
+      void queryClient.invalidateQueries({ queryKey: opportunityKeys.all })
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setSavingStudent(false)
+    }
+  }
 
   async function handleAddNote() {
     const body = noteText.trim()
@@ -1564,6 +1671,110 @@ function OpportunityDetailModal({
               )}
             </section>
           )}
+
+          {/* Student & Parent — editable. BMs / super-admins can fix
+              misimported leads (parent name where the child name should
+              be, missing age, etc.). The API allows any authenticated
+              tenant user; granular role gating sits at the resolveSession
+              level inside the contacts endpoint. */}
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Student & Parent
+              </h3>
+              {!isEditingStudent && (
+                <button
+                  type="button"
+                  onClick={openStudentEditor}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+                >
+                  <PenLine className="h-3 w-3" /> Edit
+                </button>
+              )}
+            </div>
+            {isEditingStudent ? (
+              <div className="space-y-2 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="block text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Student first name *</span>
+                    <input
+                      type="text"
+                      value={studentDraft.firstName}
+                      onChange={(e) => setStudentDraft((d) => ({ ...d, firstName: e.target.value }))}
+                      disabled={savingStudent}
+                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Last name</span>
+                    <input
+                      type="text"
+                      value={studentDraft.lastName}
+                      onChange={(e) => setStudentDraft((d) => ({ ...d, lastName: e.target.value }))}
+                      disabled={savingStudent}
+                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                    />
+                  </label>
+                </div>
+                <label className="block">
+                  <span className="block text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Student age</span>
+                  <input
+                    type="text"
+                    placeholder='e.g. "10" or "10-12 years old"'
+                    value={studentDraft.childAge1}
+                    onChange={(e) => setStudentDraft((d) => ({ ...d, childAge1: e.target.value }))}
+                    disabled={savingStudent}
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Parent name</span>
+                  <input
+                    type="text"
+                    value={studentDraft.parentFullName}
+                    onChange={(e) => setStudentDraft((d) => ({ ...d, parentFullName: e.target.value }))}
+                    disabled={savingStudent}
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                  />
+                </label>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingStudent(false)}
+                    disabled={savingStudent}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveStudent()}
+                    disabled={savingStudent || !studentDraft.firstName.trim()}
+                    className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {savingStudent && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {savingStudent ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1.5">
+                <div className="text-slate-500 dark:text-slate-400">Student</div>
+                <div className="text-slate-900 dark:text-slate-100">
+                  {isChild ? childOwnName : (contact.firstName + (contact.lastName ? ' ' + contact.lastName : ''))}
+                  {(contact as unknown as { childAge1?: string | null }).childAge1 && (
+                    <span className="ml-2 text-xs text-slate-500">
+                      ({(contact as unknown as { childAge1?: string | null }).childAge1})
+                    </span>
+                  )}
+                </div>
+                <div className="text-slate-500 dark:text-slate-400">Parent</div>
+                <div className="text-slate-900 dark:text-slate-100">
+                  {isChild ? (contact.parentFullName ?? '—') : (contact.firstName + (contact.lastName ? ' ' + contact.lastName : ''))}
+                </div>
+              </div>
+            )}
+          </section>
 
           {/* Contact */}
           <section>

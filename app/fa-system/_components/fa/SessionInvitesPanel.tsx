@@ -5,7 +5,7 @@ import { useFAStore } from "@fa/_lib/store";
 import { EmptyState } from "@fa/_components/shared/EmptyState";
 import { StatusPill } from "@fa/_components/fa/StatusPill";
 import { InvitationStatusSelector } from "@fa/_components/fa/InvitationStatusSelector";
-import { AgeCategory, Invitation, InvitationStatus, Session, Student, hasBacklog } from "@fa/_types";
+import { Invitation, InvitationStatus, Session, Student, hasBacklog } from "@fa/_types";
 
 export function SessionInvitesPanel({
   session, quota, invitations, canInvite, onOpenInvite, onStatusChange, onRemove,
@@ -74,7 +74,6 @@ export function SessionInvitesPanel({
               <tr>
                 <th>Student</th>
                 <th>Grade</th>
-                <th>Category</th>
                 <th>Credit</th>
                 <th>Backlog</th>
                 <th>Parent</th>
@@ -143,11 +142,3 @@ export function SessionInvitesPanel({
   );
 }
 
-// Pill colors per spec: Junior blue, Middler amber, Senior gold.
-function CategoryBadge({ category }: { category: AgeCategory }) {
-  const cls =
-    category === "Junior"  ? "bg-info-soft text-info" :
-    category === "Middler" ? "bg-warning-soft text-warning" :
-                              "bg-gold-100 text-gold-700";
-  return <span className={`fa-pill ${cls}`}>{category}</span>;
-}

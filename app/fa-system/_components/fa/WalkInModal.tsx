@@ -6,7 +6,6 @@ import { Modal } from "@fa/_components/shared/Modal";
 import { useFAStore } from "@fa/_lib/store";
 import { useCurrentUser } from "@fa/_hooks/useCurrentUser";
 import {
-  AgeCategory,
   BRANCHES,
   BranchCode,
   FAEvent,
@@ -296,7 +295,6 @@ function StudentStep({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-ink-900">{s.name}</span>
-                  <CategoryBadge category={s.ageCategory} />
                   <span className="font-mono text-xs text-ink-400">G{s.grade}</span>
                 </div>
                 <div className="text-xs text-ink-400 mt-1 flex items-center gap-2">
@@ -426,7 +424,6 @@ function ConfirmStep({
             <dt className="text-xs text-ink-400 uppercase tracking-wider">Student</dt>
             <dd className="text-base font-medium text-ink-900 mt-0.5 flex items-center gap-2 flex-wrap">
               {student.name}
-              <CategoryBadge category={student.ageCategory} />
               <span className="font-mono text-xs text-ink-500">G{student.grade}</span>
               <span className="font-mono text-xs font-semibold text-ink-700 bg-ivory-200 px-2 py-0.5 rounded">
                 {branch}
@@ -484,12 +481,3 @@ function ConfirmStep({
   );
 }
 
-// Same colour scheme as Feature 3's CategoryBadge — kept local to this file
-// to honour the "do not touch other files" scope rule.
-function CategoryBadge({ category }: { category: AgeCategory }) {
-  const cls =
-    category === "Junior"  ? "bg-info-soft text-info" :
-    category === "Middler" ? "bg-warning-soft text-warning" :
-                              "bg-gold-100 text-gold-700";
-  return <span className={`fa-pill ${cls}`}>{category}</span>;
-}

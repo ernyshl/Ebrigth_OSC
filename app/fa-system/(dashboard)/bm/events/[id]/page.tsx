@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useState, useMemo, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, CalendarDays, MapPin, Clock, Users,
@@ -22,7 +22,16 @@ import { formatDateRange } from "@fa/_lib/date";
 
 export default function BMEventDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const user = useCurrentUser();
+
+  // MKT users browsing the BM section see the marketing detail page instead
+  // (it already has all-branch data; the BM page needs a branch context).
+  useEffect(() => {
+    if (user?.role === "MKT") {
+      router.replace(`/fa-system/marketing/events/${id}`);
+    }
+  }, [user, router, id]);
 
   const allEvents      = useFAStore(s => s.events);
   const allSessions    = useFAStore(s => s.sessions);

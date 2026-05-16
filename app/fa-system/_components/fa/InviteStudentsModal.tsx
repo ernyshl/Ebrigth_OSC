@@ -6,7 +6,12 @@ import { useFAStore } from "@fa/_lib/store";
 import { useCurrentUser } from "@fa/_hooks/useCurrentUser";
 import { Modal } from "@fa/_components/shared/Modal";
 import { StatusPill } from "@fa/_components/fa/StatusPill";
-import { AgeCategory, Invitation, Session, isStudentEligible, hasBacklog } from "@fa/_types";
+import { Invitation, Session, isStudentEligible, hasBacklog, invitableGradesFor, FA_CURRENT_GRADE_MIN_CHAPTER } from "@fa/_types";
+
+export interface InvitePick {
+  studentId: string;
+  targetGrade: number;
+}
 
 export interface InvitePick {
   studentId: string;
@@ -168,7 +173,6 @@ export function InviteStudentsModal({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-ink-900">{student.name}</span>
-                      <CategoryBadge category={student.ageCategory} />
                       <span className="font-mono text-xs text-ink-400">G{student.grade}·C{student.credit}</span>
                       {eligible && !alreadyInvited && (
                         <StatusPill tone="success" showDot={false}>Eligible</StatusPill>
@@ -264,11 +268,3 @@ export function InviteStudentsModal({
   );
 }
 
-// Pill colors per spec: Junior blue, Middler amber, Senior gold.
-function CategoryBadge({ category }: { category: AgeCategory }) {
-  const cls =
-    category === "Junior"  ? "bg-info-soft text-info" :
-    category === "Middler" ? "bg-warning-soft text-warning" :
-                              "bg-gold-100 text-gold-700";
-  return <span className={`fa-pill ${cls}`}>{category}</span>;
-}
