@@ -10,46 +10,23 @@ import { DEFAULT_CARD_PREFS, type CardPrefs } from '@/lib/crm/kanban-card-prefs'
 import { QuickActionIcon } from './customise-card-drawer'
 
 // ─── Lead source icons ────────────────────────────────────────────────────────
-// Brand marks — TikTok / Meta / Globe (Others). Meta covers the whole family
-// (Facebook, Instagram, WhatsApp) so the card surfaces a single recognisable
-// logo for any Meta-owned source. Anything else falls through to the globe.
-
-function TikTokMark({ className }: { className?: string }) {
-  // Rounded-square black background with TikTok's stylised musical note glyph.
-  return (
-    <svg viewBox="0 0 20 20" className={className} aria-hidden="true">
-      <rect x="0" y="0" width="20" height="20" rx="4" fill="currentColor" />
-      <path
-        d="M13.2 5.4c.5.9 1.4 1.5 2.4 1.6V9c-1.1 0-2.2-.3-3.1-.9v4.1a3.5 3.5 0 1 1-3.5-3.5c.2 0 .4 0 .6.1v2.1a1.5 1.5 0 1 0 1 1.4V4.5h1.6c.1.3.4.6.6.8.1 0 .2.1.4.1Z"
-        fill="white"
-      />
-    </svg>
-  )
-}
-
-function MetaMark({ className }: { className?: string }) {
-  // The Meta infinity loop, simplified. Blue gradient to match the brand.
-  return (
-    <svg viewBox="0 0 20 20" className={className} aria-hidden="true">
-      <defs>
-        <linearGradient id="meta-gradient" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#0467df" />
-          <stop offset="100%" stopColor="#1c9bff" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M4.5 6.5c1.5-2 4-2 5.5 0l1 1.4 1-1.4c1.5-2 4-2 5.5 0 1.5 2 1.5 5 0 7-1.5 2-4 2-5.5 0L11 11.6 10 13c-1.5 2-4 2-5.5 0-1.5-2-1.5-5 0-6.5Zm1.5 1c-.9 1.1-.9 3.4 0 4.5.9 1.1 2.5 1.1 3.4 0L10.4 11l-1-1.5C8.5 8.4 6.9 8.4 6 7.5Zm8 0c-.9 0-2.5 0-3.4 1.1l-1 1.4 1 1.5c.9 1.1 2.5 1.1 3.4 0 .9-1.1.9-3.4 0-4.5Z"
-        fill="url(#meta-gradient)"
-      />
-    </svg>
-  )
-}
+// TikTok and Meta render as the original 2-letter chips ("tt" / "fb") per the
+// user's preference — the inline brand-mark SVGs didn't pop the way the chips
+// did at the card's tiny scale. Anything else still gets the Globe icon since
+// that one tested better than the older "rf / wa / ?" chips.
 
 function GlobeMark({ className }: { className?: string }) {
-  // Lucide-style globe — drawn inline so it can share the title tooltip pattern
-  // the other marks use and avoid pulling another lucide import for this one.
   return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
       <circle cx="10" cy="10" r="7.5" />
       <path d="M2.5 10h15" />
       <path d="M10 2.5c2 2.3 3 5 3 7.5s-1 5.2-3 7.5c-2-2.3-3-5-3-7.5s1-5.2 3-7.5Z" />
@@ -62,13 +39,16 @@ function LeadSourceIcon({ name }: { name: string }) {
 
   if (lower.includes('tiktok')) {
     return (
-      <span title={name} className="inline-flex h-5 w-5 items-center justify-center text-slate-900 dark:text-white">
-        <TikTokMark className="h-5 w-5" />
+      <span
+        title={name}
+        className="inline-flex h-5 w-5 items-center justify-center rounded text-[9px] font-bold bg-slate-900 text-white"
+      >
+        tt
       </span>
     )
   }
-  // Meta family — Facebook, Instagram, WhatsApp and the literal "Meta" label
-  // all collapse to the single Meta brand mark per the latest design.
+  // Meta family — Facebook, Instagram, WhatsApp, "Meta" — all collapse to the
+  // same "fb" blue chip per the latest preference.
   if (
     lower.includes('facebook') ||
     lower.includes('meta') ||
@@ -77,8 +57,11 @@ function LeadSourceIcon({ name }: { name: string }) {
     lower === 'wa'
   ) {
     return (
-      <span title={name} className="inline-flex h-5 w-5 items-center justify-center">
-        <MetaMark className="h-5 w-5" />
+      <span
+        title={name}
+        className="inline-flex h-5 w-5 items-center justify-center rounded text-[9px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+      >
+        fb
       </span>
     )
   }
