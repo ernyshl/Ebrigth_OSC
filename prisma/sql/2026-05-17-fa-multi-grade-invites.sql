@@ -25,14 +25,16 @@
 -- 1. Unique constraint swap on fa_invitations
 -- ---------------------------------------------------------------------------
 
--- The old constraint name follows the default Postgres pattern. If it was
--- created with a custom name, list it in psql first via:
---   \d fa_invitations
--- and replace the IF EXISTS branch below with that name.
+-- The old constraint can appear under any of these names depending on how
+-- it was originally created. All three are tried with IF EXISTS so the
+-- migration is safe to run regardless of which name is in use, and idempotent
+-- once any of them has been removed.
+ALTER TABLE fa_invitations
+  DROP CONSTRAINT IF EXISTS fa_invitations_event_id_student_id_key;
+
 ALTER TABLE fa_invitations
   DROP CONSTRAINT IF EXISTS fa_invitations_tenant_id_event_id_student_id_key;
 
--- Some deploys may have named it differently — try a second common variant.
 ALTER TABLE fa_invitations
   DROP CONSTRAINT IF EXISTS fa_invitations_event_student_unique;
 
