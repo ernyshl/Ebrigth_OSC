@@ -22,7 +22,6 @@ import { BulkSessionEditorModal } from "@fa/_components/fa/BulkSessionEditorModa
 import { QuotaModal } from "@fa/_components/fa/QuotaModal";
 import { MarketingSessionInvitesModal } from "@fa/_components/fa/MarketingSessionInvitesModal";
 import { EventInvitationListCard } from "@fa/_components/fa/EventInvitationListCard";
-import { MultiGradeExceptionsCard } from "@fa/_components/fa/MultiGradeExceptionsCard";
 import { EventStatus, Session } from "@fa/_types";
 import { addDays, parseISO } from "date-fns";
 import { formatDateRange } from "@fa/_lib/date";
@@ -252,9 +251,6 @@ export default function MarketingEventDetailPage() {
           <InvitationWindowStatus event={event} />
         </div>
       </div>
-
-      {/* ── Multi-Grade Exceptions toggle (Marketing/Admin only) ── */}
-      <MultiGradeExceptionsCard event={event} />
 
       {/* ── Sessions ── */}
       <div className="flex items-center justify-between mb-5 fa-enter fa-delay-3">
