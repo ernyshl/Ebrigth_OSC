@@ -47,7 +47,9 @@ ALTER TABLE fa_invitations
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS fa_event_branch_overrides (
-  event_id     uuid        NOT NULL REFERENCES fa_events(id) ON DELETE CASCADE,
+  -- fa_events.id is text (not uuid) in this deploy, so match the type
+  -- to keep the foreign key valid.
+  event_id     text        NOT NULL REFERENCES fa_events(id) ON DELETE CASCADE,
   branch_code  text        NOT NULL,
   granted_by   text        NOT NULL,        -- email of the Marketing/Admin user
   granted_at   timestamptz NOT NULL DEFAULT now(),
