@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, CalendarDays, MapPin, Clock, Users,
-  AlertCircle, ChevronRight,
+  AlertCircle, ChevronRight, RefreshCw,
 } from "lucide-react";
 import { useFAStore } from "@fa/_lib/store";
 import { useCurrentUser } from "@fa/_hooks/useCurrentUser";
@@ -52,10 +52,22 @@ export default function BMEventDetailPage() {
   const inviteStudent = useFAStore(s => s.inviteStudent);
   const updateInvitationStatus = useFAStore(s => s.updateInvitationStatus);
   const removeInvitation = useFAStore(s => s.removeInvitation);
+  const loadEvents = useFAStore(s => s.loadEvents);
+  const eventsLoading = useFAStore(s => s.eventsLoading);
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [invitationToRemove, setInvitationToRemove] = useState<Invitation | null>(null);
+  const [justRefreshed, setJustRefreshed] = useState(false);
+
+  // Manual refresh — re-fetches every event/session/quota/invitation row
+  // from the server. Used when the BM has made changes in another tab or
+  // when an invite count looks stale (e.g. after Marketing edits a quota).
+  async function handleRefresh() {
+    await loadEvents();
+    setJustRefreshed(true);
+    setTimeout(() => setJustRefreshed(false), 1500);
+  }
 
   // Only sessions where this BM's branch has a quota — must be above early returns
   const bmSessions = useMemo(() => {
@@ -139,6 +151,28 @@ export default function BMEventDetailPage() {
       </div>
 
       {/* Branch summary */}
+      <div className="flex items-center justify-between mb-3">
+        <div
+          className="fa-mono text-[10px] uppercase text-ink-400"
+          style={{ letterSpacing: "0.12em" }}
+        >
+          Your branch · {branch.code}
+        </div>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={eventsLoading}
+          title="Re-fetch invite counts and session data from the server"
+          className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-[6px] border transition-all ${
+            justRefreshed
+              ? "border-success bg-success-soft text-success"
+              : "border-ivory-300 bg-white text-ink-600 hover:border-gold-400 hover:bg-gold-50"
+          } ${eventsLoading ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${eventsLoading ? "animate-spin" : ""}`} />
+          {eventsLoading ? "Refreshing…" : justRefreshed ? "Refreshed" : "Refresh"}
+        </button>
+      </div>
       <div className="grid grid-cols-4 gap-4 mb-8">
         <BMEventStatCard label="Your sessions" value={bmSessions.length} />
         <BMEventStatCard label="Total slots" value={totalBranchQuota} />
