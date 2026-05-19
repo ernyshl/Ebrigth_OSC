@@ -115,13 +115,13 @@ function isNodeReady(node: Node): { ready: boolean; reason?: string } {
 
 function TriggerNode({ data }: { data: { label: string; triggerType: string } }) {
   return (
-    <div className={cn('rounded-xl border p-3 min-w-[200px] shadow-sm transition-shadow hover:shadow-md', ACTION_COLORS.trigger)}>
+    <div className={cn('rounded-xl border p-3 min-w-50 shadow-sm transition-shadow hover:shadow-md', ACTION_COLORS.trigger)}>
       <div className="flex items-center gap-1.5 mb-1">
         <Zap className="h-3.5 w-3.5 text-blue-600" />
         <span className="text-[10px] font-semibold text-blue-600 uppercase tracking-wider">Trigger</span>
       </div>
       <p className="font-medium text-slate-900 dark:text-slate-100 text-sm leading-tight">{data.label}</p>
-      <Handle type="source" position={Position.Bottom} className="!bg-blue-500" />
+      <Handle type="source" position={Position.Bottom} className="bg-blue-500!" />
     </div>
   )
 }
@@ -135,7 +135,7 @@ function ActionNode({ data, selected }: { data: { label: string; actionType: Act
   return (
     <div
       className={cn(
-        'rounded-xl border p-3 min-w-[220px] shadow-sm transition-all hover:shadow-md cursor-pointer',
+        'rounded-xl border p-3 min-w-55 shadow-sm transition-all hover:shadow-md cursor-pointer',
         colorClass,
         selected && 'ring-2 ring-blue-500',
       )}
@@ -165,7 +165,7 @@ function DelayNode({ data, selected }: { data: { label: string; amount?: number;
   return (
     <div
       className={cn(
-        'rounded-xl border p-3 min-w-[180px] shadow-sm transition-all hover:shadow-md cursor-pointer',
+        'rounded-xl border p-3 min-w-45 shadow-sm transition-all hover:shadow-md cursor-pointer',
         ACTION_COLORS.delay,
         selected && 'ring-2 ring-blue-500',
       )}
@@ -187,7 +187,7 @@ function ConditionNode({ data, selected }: { data: { label: string; field?: stri
   return (
     <div
       className={cn(
-        'rounded-xl border p-3 min-w-[220px] shadow-sm transition-all hover:shadow-md cursor-pointer',
+        'rounded-xl border p-3 min-w-55 shadow-sm transition-all hover:shadow-md cursor-pointer',
         ACTION_COLORS.condition,
         selected && 'ring-2 ring-blue-500',
       )}
@@ -571,8 +571,8 @@ export function AutomationEditor({ automationId, userId: _userId }: AutomationEd
             }}
           >
             <Background gap={20} color="#cbd5e1" />
-            <Controls className="!shadow-md" />
-            <MiniMap className="!bg-white dark:!bg-slate-800 !border !border-slate-200 dark:!border-slate-700" />
+            <Controls className="shadow-md!" />
+            <MiniMap className="bg-white! dark:bg-slate-800! border! border-slate-200! dark:border-slate-700!" />
           </ReactFlow>
 
           {/* Readiness banner */}
@@ -637,7 +637,7 @@ function TestRunControls({
       <select
         value={testContactId}
         onChange={(e) => setTestContactId(e.target.value)}
-        className="text-xs border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1.5 bg-white dark:bg-slate-800 max-w-[160px]"
+        className="text-xs border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1.5 bg-white dark:bg-slate-800 max-w-40"
         title="Pick a contact to run a one-off test against"
         disabled={disabled}
       >
