@@ -64,20 +64,23 @@ interface MetricsResponse {
   scopedBranchName?: string | null
 }
 
-type Preset = 'today' | 'yesterday' | '7d' | 'this_week' | '30d'
+type Preset = 'today' | 'yesterday' | 'last_week' | 'this_week' | '30d'
 
 const PRESETS: Array<{ key: Preset; label: string }> = [
   { key: 'today',     label: 'Today' },
   { key: 'yesterday', label: 'Yesterday' },
-  { key: '7d',        label: 'Last 7 Days' },
   { key: 'this_week', label: 'This Week (Mon)' },
+  { key: 'last_week', label: 'Last Week' },
   { key: '30d',       label: 'Last 30 Days' },
 ]
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function DashboardClient() {
-  const [preset, setPreset] = useState<Preset>('today')
+  // Default landing view is the running week — single-day windows make funnel
+  // rates noisy and aren't actionable for BMs scanning the board on Monday
+  // morning.
+  const [preset, setPreset] = useState<Preset>('this_week')
   const { selectedBranch } = useBranchContext()
   // When an admin picks a branch from the topbar, send branchId so the API
   // returns that branch's metrics + monthly trend (admin-as-branch view).
@@ -110,7 +113,7 @@ export function DashboardClient() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Leads Dashboard</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {rangeLabel || 'Select a range'} · Opportunities created in range
+            {rangeLabel || 'Select a range'} · NL by created · CT / SU / ENR by stage entry
           </p>
         </div>
         <div className="rounded-full bg-slate-100 p-1 text-sm dark:bg-slate-800">
