@@ -194,7 +194,10 @@ function startOfDayKL(now: Date = new Date()): Date {
 }
 
 function parseDateRange(sp: URLSearchParams): { from: Date; to: Date } {
-  const preset = sp.get('preset') ?? 'today'
+  // Default is now `this_week` (per the dashboard redesign — BMs land on the
+  // running week view instead of "today only", which is rarely meaningful
+  // for funnel rates with single-digit denominators).
+  const preset = sp.get('preset') ?? 'this_week'
   const today = startOfDayKL()
   const endOfToday = new Date(today.getTime() + 24 * 3600 * 1000 - 1)
 
@@ -210,24 +213,31 @@ function parseDateRange(sp: URLSearchParams): { from: Date; to: Date } {
       const to = new Date(today.getTime() - 1)
       return { from, to }
     }
-    case '7d': {
-      const from = new Date(today.getTime() - 6 * 24 * 3600 * 1000)
+    case 'today': {
+      return { from: today, to: endOfToday }
+    }
+    case 'last_week': {
+      // Previous calendar week Mon-Sun in KL day-of-week terms.
+      const wall = new Date(today.getTime() + KL_OFFSET_MS)
+      const dow = wall.getUTCDay() // 0=Sun, 1=Mon, …
+      const daysSinceMon = dow === 0 ? 6 : dow - 1  // 0 when today is Mon
+      const fromMs = today.getTime() - (daysSinceMon + 7) * 24 * 3600 * 1000
+      const toMs   = today.getTime() - daysSinceMon * 24 * 3600 * 1000 - 1
+      return { from: new Date(fromMs), to: new Date(toMs) }
+    }
+    case '30d': {
+      const from = new Date(today.getTime() - 29 * 24 * 3600 * 1000)
       return { from, to: endOfToday }
     }
-    case 'this_week': {
-      // Monday start in KL day-of-week terms (KL has no DST).
+    case 'this_week':
+    default: {
+      // Monday start in KL day-of-week terms (KL has no DST). Default branch.
       const wall = new Date(today.getTime() + KL_OFFSET_MS)
       const dow = wall.getUTCDay() // 0=Sun
       const daysBack = dow === 0 ? 6 : dow - 1
       const from = new Date(today.getTime() - daysBack * 24 * 3600 * 1000)
       return { from, to: endOfToday }
     }
-    case '30d': {
-      const from = new Date(today.getTime() - 29 * 24 * 3600 * 1000)
-      return { from, to: endOfToday }
-    }
-    default: // today
-      return { from: today, to: endOfToday }
   }
 }
 
@@ -290,23 +300,9 @@ export async function GET(req: NextRequest) {
       stageInfo.set(s.id, { pipelineId: s.pipelineId, order: s.order, category: cat })
     }
 
-    // Per-pipeline order of each cumulative-funnel category — used to decide
-    // whether a given opp has "reached" CT, SU, or ENR based on its current
-    // stage.order. Buffer is intentionally excluded (snapshot-only, not part
-    // of the funnel) so a card parked in Buffer doesn't bump CT/SU/ENR.
-    const categoryOrderByPipeline = new Map<
-      string,
-      { CT?: number; SU?: number; ENR?: number }
-    >()
-    for (const s of stages) {
-      if (!s.pipelineId) continue
-      const info = stageInfo.get(s.id)
-      if (!info?.category) continue
-      if (info.category === 'NL' || info.category === 'BUF') continue
-      const bucket = categoryOrderByPipeline.get(s.pipelineId) ?? {}
-      bucket[info.category] = s.order
-      categoryOrderByPipeline.set(s.pipelineId, bucket)
-    }
+    // (The previous build also computed per-pipeline category orderings to
+    // run a "current stage.order ≥ CT.order" cumulative check. That logic
+    // is gone — CT/SU/ENR now come from crm_stage_history directly.)
 
     // Fetch branches. Elevated users get the full canonical list MINUS
     // the dashboard-excluded ones (OD etc.); non-elevated users only get
@@ -325,8 +321,19 @@ export async function GET(req: NextRequest) {
     })
 
     // Count opportunities per (branchId, category) in the date range.
-    // NL + ENR + BUF still count by createdAt — "leads received in range".
-    // CT + SU count instead by trial-appointment.startAt below.
+    //
+    // NL  — leads CREATED in range (snapshot of inflow).
+    // BUF — current-stage snapshot at end of range (parked in Buffer).
+    // CT / SU / ENR — counted by stage_history ENTRY date. A lead dragged
+    //   into the stage at any time inside the range counts +1 there. Once
+    //   recorded the count is permanent: subsequent moves don't undo it.
+    //
+    // This replaces the older trial-appointment-driven CT/SU counts. The
+    // old model bucketed CT/SU by the trial's scheduled date, so a lead
+    // dragged to CT today with a class booked next week wouldn't show up
+    // in this week's CT count; and a Show-Up that later moved to CL would
+    // silently disappear from the historical SU figure once "current
+    // stage < SU.order" became true.
     const opps = await prisma.crm_opportunity.findMany({
       where: {
         tenantId,
@@ -337,43 +344,38 @@ export async function GET(req: NextRequest) {
       select: { id: true, branchId: true, stageId: true, createdAt: true, contactId: true },
     })
 
-    // Trial-class appointments whose start time falls in the range — drives
-    // the CT + SU counts. "Today's CT" = trials scheduled for today, not
-    // leads dragged to CT today. Same for SU (we still gate on the lead's
-    // current stage being at or past Show-Up).
-    const trialAppts = await prisma.crm_appointment.findMany({
-      where: {
-        tenantId,
-        title: 'Trial Class',
-        startAt: { gte: from, lte: to },
-        branchId: { in: branches.map((b) => b.id) },
-      },
-      select: { branchId: true, contactId: true, startAt: true },
-    })
+    // ─── Stage-history entries that drive CT / SU / ENR ──────────────────
+    // Pre-collect the stage IDs that map to each target category. A pipeline
+    // can only have one stage per category (CT/SU/ENR), but tenants have
+    // multiple pipelines, so this is a many-to-one map.
+    const stageIdsByCategory: Record<'CT' | 'SU' | 'ENR', string[]> = { CT: [], SU: [], ENR: [] }
+    for (const [id, info] of stageInfo.entries()) {
+      if (info.category === 'CT')  stageIdsByCategory.CT.push(id)
+      if (info.category === 'SU')  stageIdsByCategory.SU.push(id)
+      if (info.category === 'ENR') stageIdsByCategory.ENR.push(id)
+    }
+    const targetStageIds = [
+      ...stageIdsByCategory.CT,
+      ...stageIdsByCategory.SU,
+      ...stageIdsByCategory.ENR,
+    ]
 
-    // For each appointment we need the contact's CURRENT opp stage to
-    // decide whether they reached CT / SU. Take the contact's most recent
-    // opp on the same branch — handles sibling-exploded contacts cleanly
-    // (each child has its own opp on the same branch).
-    const apptContactIds = Array.from(new Set(trialAppts.map((a) => a.contactId)))
-    const apptOpps =
-      apptContactIds.length === 0
+    const stageEntries =
+      targetStageIds.length === 0
         ? []
-        : await prisma.crm_opportunity.findMany({
+        : await prisma.crm_stage_history.findMany({
             where: {
               tenantId,
-              deletedAt: null,
-              contactId: { in: apptContactIds },
-              branchId: { in: branches.map((b) => b.id) },
+              changedAt: { gte: from, lte: to },
+              toStageId: { in: targetStageIds },
+              opportunity: { branchId: { in: branches.map((b) => b.id) } },
             },
-            select: { contactId: true, branchId: true, stageId: true, createdAt: true },
-            orderBy: { createdAt: 'desc' },
+            select: {
+              opportunityId: true,
+              toStageId: true,
+              opportunity: { select: { branchId: true } },
+            },
           })
-    const stageByContactBranch = new Map<string, string>() // contactId|branchId → stageId
-    for (const o of apptOpps) {
-      const key = `${o.contactId}|${o.branchId}`
-      if (!stageByContactBranch.has(key)) stageByContactBranch.set(key, o.stageId)
-    }
 
     // Initialise per-branch metrics
     const branchMetrics = new Map<string, BranchMetrics>()
@@ -387,65 +389,50 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Counting model:
-    //
-    // NL  = every opportunity received in the date range, regardless of its
-    //       current stage. Permanent count of received leads.
-    //
-    // CT  = opportunities whose Trial Class appointment.startAt falls in the
-    //       range AND whose current stage is at or past CT. So "today's CT"
-    //       = trials scheduled FOR today, not leads dragged to CT today.
-    //       Handled by the appointment loop below the opp loop.
-    //
-    // SU  = same appointment-driven set as CT, but additionally requires
-    //       the lead's current stage is at or past Show-Up. (You only count
-    //       as a Show-Up if you actually showed up.)
-    //
-    // ENR = cumulative funnel on the createdAt range — opps whose current
-    //       stage.order >= ENR.order. Unchanged by this rewrite.
-    //
-    // BUF = snapshot — leads currently parked in the Buffer (OD use only)
-    //       stage. Buffer is OUT of the funnel.
-    //
-    // Rate denominators use NL (received total).
+    // NL + BUF — driven by the opportunity rows in `opps` (createdAt-in-range).
+    // CT / SU / ENR — driven by stage_history below.
     for (const o of opps) {
       const m = branchMetrics.get(o.branchId)
       if (!m) continue
-
       const info = stageInfo.get(o.stageId)
       if (!info) continue
 
-      // NL: every opp received in the date range (constant under drag)
       m.NL += 1
 
-      // Buffer is its own snapshot bucket — skip the cumulative funnel
-      // bump so a parked lead isn't double-counted as ENR.
+      // Buffer is a snapshot of the current parked-leads count among range-
+      // received opportunities. Doesn't roll into the funnel.
       if (info.category === 'BUF') {
         m.BUF += 1
-        continue
       }
-
-      // ENR still uses cumulative funnel on createdAt-in-range. CT + SU
-      // are bumped in the appointment loop below.
-      const catOrders = categoryOrderByPipeline.get(info.pipelineId)
-      if (!catOrders) continue
-      if (catOrders.ENR !== undefined && info.order >= catOrders.ENR) m.ENR += 1
     }
 
-    // CT + SU — counted per scheduled trial in the date range, gated by
-    // the lead's current stage so leads that were dropped before the
-    // trial don't inflate the trial-day numbers.
-    for (const a of trialAppts) {
-      const m = branchMetrics.get(a.branchId)
-      if (!m) continue
-      const stageId = stageByContactBranch.get(`${a.contactId}|${a.branchId}`)
-      if (!stageId) continue
-      const info = stageInfo.get(stageId)
-      if (!info) continue
-      const catOrders = categoryOrderByPipeline.get(info.pipelineId)
-      if (!catOrders) continue
-      if (catOrders.CT !== undefined && info.order >= catOrders.CT) m.CT += 1
-      if (catOrders.SU !== undefined && info.order >= catOrders.SU) m.SU += 1
+    // CT / SU / ENR — each opportunity is counted once per category per
+    // range, regardless of how many transitions it makes back and forth.
+    // We dedupe via Set keyed by `${branchId}|${oppId}` per category so a
+    // CT → RSD → CT round-trip in the same day doesn't double-count.
+    const seenByBranchCat: Record<'CT' | 'SU' | 'ENR', Map<string, Set<string>>> = {
+      CT:  new Map(),
+      SU:  new Map(),
+      ENR: new Map(),
+    }
+    for (const h of stageEntries) {
+      const branchId = h.opportunity?.branchId
+      if (!branchId) continue
+      const info = stageInfo.get(h.toStageId)
+      const cat = info?.category
+      if (cat !== 'CT' && cat !== 'SU' && cat !== 'ENR') continue
+      let perBranch = seenByBranchCat[cat].get(branchId)
+      if (!perBranch) { perBranch = new Set(); seenByBranchCat[cat].set(branchId, perBranch) }
+      perBranch.add(h.opportunityId)
+    }
+    for (const [branchId, ids] of seenByBranchCat.CT.entries()) {
+      const m = branchMetrics.get(branchId); if (m) m.CT = ids.size
+    }
+    for (const [branchId, ids] of seenByBranchCat.SU.entries()) {
+      const m = branchMetrics.get(branchId); if (m) m.SU = ids.size
+    }
+    for (const [branchId, ids] of seenByBranchCat.ENR.entries()) {
+      const m = branchMetrics.get(branchId); if (m) m.ENR = ids.size
     }
 
     for (const m of branchMetrics.values()) {
@@ -499,9 +486,9 @@ export async function GET(req: NextRequest) {
     )
 
     // ── Monthly trend (only for branch-scoped views) ─────────────────────────
-    // Build a 6-month rolling window ending on `to` so the line chart has
-    // enough span to be useful. Bucket each opp's createdAt by YYYY-MM and
-    // re-apply the same cumulative-stage logic used for the main block.
+    // 6-month rolling window ending on `to`. Same counting model as the
+    // headline block — NL by createdAt, CT/SU/ENR by stage_history entry
+    // date — but bucketed by KL month instead of summed for one range.
     let byMonth: Array<{ month: string; NL: number; CT: number; SU: number; ENR: number; BUF: number }> = []
     if (!elevated) {
       // Bucket by KL month so a lead at 02:00 KL on the 1st doesn't fall
@@ -514,7 +501,6 @@ export async function GET(req: NextRequest) {
       const sixMonthsBackWallMs = Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth() - 5, 1)
       const sixMonthsBack = new Date(sixMonthsBackWallMs - KL_OFFSET_MS)
 
-      // Re-fetch for the wider window — `from`/`to` may be just "today".
       const trendOpps = await prisma.crm_opportunity.findMany({
         where: {
           tenantId,
@@ -525,47 +511,27 @@ export async function GET(req: NextRequest) {
         select: { branchId: true, stageId: true, createdAt: true },
       })
 
-      // Same window of trial appointments — used to bucket CT + SU by
-      // trial-day month instead of by lead-created month, matching the
-      // main block's appointment-driven counting.
-      const trendAppts = await prisma.crm_appointment.findMany({
-        where: {
-          tenantId,
-          title:    'Trial Class',
-          startAt:  { gte: sixMonthsBack, lte: to },
-          branchId: { in: branches.map((b) => b.id) },
-        },
-        select: { contactId: true, branchId: true, startAt: true },
-      })
-      // Reuse the contact→stage map built earlier when possible, then top
-      // up with anything new the 6-month window dragged in.
-      const trendExtraContactIds = Array.from(
-        new Set(
-          trendAppts
-            .map((a) => a.contactId)
-            .filter((cid) => !apptContactIds.includes(cid)),
-        ),
-      )
-      if (trendExtraContactIds.length > 0) {
-        const extraOpps = await prisma.crm_opportunity.findMany({
-          where: {
-            tenantId,
-            deletedAt: null,
-            contactId: { in: trendExtraContactIds },
-            branchId:  { in: branches.map((b) => b.id) },
-          },
-          select: { contactId: true, branchId: true, stageId: true, createdAt: true },
-          orderBy: { createdAt: 'desc' },
-        })
-        for (const o of extraOpps) {
-          const key = `${o.contactId}|${o.branchId}`
-          if (!stageByContactBranch.has(key)) stageByContactBranch.set(key, o.stageId)
-        }
-      }
+      // Stage-history entries (CT / SU / ENR) over the same 6-month window.
+      const trendEntries =
+        targetStageIds.length === 0
+          ? []
+          : await prisma.crm_stage_history.findMany({
+              where: {
+                tenantId,
+                changedAt: { gte: sixMonthsBack, lte: to },
+                toStageId: { in: targetStageIds },
+                opportunity: { branchId: { in: branches.map((b) => b.id) } },
+              },
+              select: {
+                opportunityId: true,
+                toStageId: true,
+                changedAt: true,
+                opportunity: { select: { branchId: true } },
+              },
+            })
 
       const monthMap = new Map<string, { NL: number; CT: number; SU: number; ENR: number; BUF: number }>()
       // Pre-seed every month so the chart shows zeros instead of gaps.
-      // Iterate in wall-clock space (KL) so we don't drift across DST/UTC.
       const startYear = wall.getUTCFullYear()
       const startMonth = wall.getUTCMonth() - 5
       for (let m = 0; m < 6; m++) {
@@ -574,39 +540,38 @@ export async function GET(req: NextRequest) {
         monthMap.set(`${yyyy}-${String(mm + 1).padStart(2, '0')}`, { NL: 0, CT: 0, SU: 0, ENR: 0, BUF: 0 })
       }
 
-      // NL + ENR + BUF: bucket by createdAt month — these still measure
-      // "leads received that month" / "ENR cumulative funnel" / "Buffer
-      // snapshot".
+      // NL + BUF — bucket by createdAt month.
       for (const o of trendOpps) {
         const key = monthKey(new Date(o.createdAt))
         const bucket = monthMap.get(key)
         if (!bucket) continue
         const info = stageInfo.get(o.stageId)
         if (!info) continue
-
         bucket.NL += 1
-        if (info.category === 'BUF') {
-          bucket.BUF += 1
-          continue
-        }
-        const catOrders = categoryOrderByPipeline.get(info.pipelineId)
-        if (!catOrders) continue
-        if (catOrders.ENR !== undefined && info.order >= catOrders.ENR) bucket.ENR += 1
+        if (info.category === 'BUF') bucket.BUF += 1
       }
 
-      // CT + SU: bucket by trial-appointment month.
-      for (const a of trendAppts) {
-        const key = monthKey(new Date(a.startAt))
-        const bucket = monthMap.get(key)
-        if (!bucket) continue
-        const stageId = stageByContactBranch.get(`${a.contactId}|${a.branchId}`)
-        if (!stageId) continue
-        const info = stageInfo.get(stageId)
-        if (!info) continue
-        const catOrders = categoryOrderByPipeline.get(info.pipelineId)
-        if (!catOrders) continue
-        if (catOrders.CT !== undefined && info.order >= catOrders.CT) bucket.CT += 1
-        if (catOrders.SU !== undefined && info.order >= catOrders.SU) bucket.SU += 1
+      // CT / SU / ENR — bucket by stage_history.changedAt month, dedup per
+      // (month, category, opportunityId) so a lead bouncing CT → RSD → CT
+      // inside one month doesn't count twice.
+      const seenInMonth: Record<'CT' | 'SU' | 'ENR', Map<string, Set<string>>> = {
+        CT: new Map(), SU: new Map(), ENR: new Map(),
+      }
+      for (const h of trendEntries) {
+        const cat = stageInfo.get(h.toStageId)?.category
+        if (cat !== 'CT' && cat !== 'SU' && cat !== 'ENR') continue
+        const key = monthKey(new Date(h.changedAt))
+        if (!monthMap.has(key)) continue
+        let set = seenInMonth[cat].get(key)
+        if (!set) { set = new Set(); seenInMonth[cat].set(key, set) }
+        set.add(h.opportunityId)
+      }
+      for (const cat of ['CT', 'SU', 'ENR'] as const) {
+        for (const [monthKey_, ids] of seenInMonth[cat].entries()) {
+          const bucket = monthMap.get(monthKey_)
+          if (!bucket) continue
+          bucket[cat] = ids.size
+        }
       }
 
       byMonth = Array.from(monthMap.entries())
